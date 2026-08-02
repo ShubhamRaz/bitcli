@@ -137,17 +137,24 @@ func (b Builder) CMakeBuildCommand() Command {
 // GenerateCommand builds a direct llama-cli invocation for text generation.
 // This bypasses run_inference.py for full control over flags and GPU support.
 func (b Builder) GenerateCommand(m model.Model, req backend.GenerateRequest, conversation bool) Command {
+	prompt := req.Prompt
+	// If not already formatted as a multi-turn chat template, wrap single prompt as a turn.
+	if !conversation && !strings.Contains(prompt, "<|begin_of_text|>") && !strings.Contains(prompt, "<|start_header_id|>") && !strings.Contains(prompt, "<|im_start|>") {
+		prompt = fmt.Sprintf("<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n%s<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n", strings.TrimSpace(prompt))
+	}
+
 	args := []string{
 		"-m", m.Path,
-		"-p", req.Prompt,
+		"-p", prompt,
 		"-st",
 		"--no-warmup",
 		"--no-show-timings",
 		"--simple-io",
-		"--repeat-penalty", "1.15",
-		"--repeat-last-n", "64",
+		"--repeat-penalty", "1.25",
+		"--repeat-last-n", "128",
 		"-r", "<|eot_id|>",
 		"-r", "<|end_of_text|>",
+		"-r", "<|start_header_id|>",
 		"-r", "User:",
 		"-r", "Human:",
 	}
@@ -181,49 +188,27 @@ func (b Builder) GenerateCommand(m model.Model, req backend.GenerateRequest, con
 	return Command{Dir: b.BackendDir(), Name: b.LlamaCLIPath(), Args: args}
 }
 
-// defaultSystemPrompt is injected when no system message is provided so the
-// model behaves as a helpful assistant rather than a raw text completer.
-const defaultSystemPrompt = "You are a helpful, concise, and friendly AI assistant. Answer the user's questions clearly and accurately."
-
-// PromptFromMessages converts a chat transcript into the chat template format
-// that BitNet-b1.58-2B-4T was trained on:
+// PromptFromMessages converts a chat transcript into the standard LLaMA-3 instruction chat template:
 //
-//	<|begin_of_text|>System: {system}<|eot_id|>
-//	User: {msg}<|eot_id|>
-//	Assistant: {msg}<|eot_id|>
-//	...
-//	Assistant:
+//	<|begin_of_text|><|start_header_id|>user<|end_header_id|>
+//	{msg}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+//	{reply}<|eot_id|>...
+//	<|start_header_id|>assistant<|end_header_id|>
 func PromptFromMessages(messages []backend.Message) string {
 	var sb strings.Builder
 	sb.WriteString("<|begin_of_text|>")
 
-	// Inject a default system prompt when no explicit one is provided.
-	hasSystem := false
 	for _, msg := range messages {
-		if strings.EqualFold(strings.TrimSpace(msg.Role), "system") {
-			hasSystem = true
-			break
-		}
-	}
-	if !hasSystem {
-		sb.WriteString("System: ")
-		sb.WriteString(defaultSystemPrompt)
-		sb.WriteString("<|eot_id|>\n")
-	}
-
-	for _, msg := range messages {
-		role := strings.TrimSpace(msg.Role)
+		role := strings.ToLower(strings.TrimSpace(msg.Role))
 		if role == "" {
 			role = "user"
 		}
-		sb.WriteString(strings.ToUpper(role[:1]))
-		if len(role) > 1 {
-			sb.WriteString(strings.ToLower(role[1:]))
+		content := strings.TrimSpace(msg.Content)
+		if content == "" {
+			continue
 		}
-		sb.WriteString(": ")
-		sb.WriteString(strings.TrimSpace(msg.Content))
-		sb.WriteString("<|eot_id|>\n")
+		sb.WriteString(fmt.Sprintf("<|start_header_id|>%s<|end_header_id|>\n\n%s<|eot_id|>", role, content))
 	}
-	sb.WriteString("Assistant:")
+	sb.WriteString("<|start_header_id|>assistant<|end_header_id|>\n\n")
 	return sb.String()
 }

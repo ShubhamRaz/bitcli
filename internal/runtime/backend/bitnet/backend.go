@@ -137,7 +137,7 @@ func (b *Backend) Prepare(ctx context.Context, m model.Model, opts backend.Prepa
 // Generate streams output from llama-cli.
 func (b *Backend) Generate(ctx context.Context, m model.Model, req backend.GenerateRequest) (<-chan backend.TokenEvent, <-chan error) {
 	cmd := b.builder.GenerateCommand(m, req, false)
-	return b.runInference(ctx, cmd, req.Prompt)
+	return b.runInference(ctx, cmd)
 }
 
 // Chat streams output from llama-cli using the full chat history
@@ -151,7 +151,7 @@ func (b *Backend) Chat(ctx context.Context, m model.Model, req backend.ChatReque
 		Options: req.Options,
 	}
 	cmd := b.builder.GenerateCommand(m, genReq, false)
-	return b.runInference(ctx, cmd, prompt)
+	return b.runInference(ctx, cmd)
 }
 
 // Stop is reserved for long-lived backend sessions.
@@ -169,10 +169,18 @@ func (b *Backend) Version(ctx context.Context) (string, error) {
 	return strings.TrimSpace(output), nil
 }
 
-func (b *Backend) runInference(ctx context.Context, cmd Command, prompt string) (<-chan backend.TokenEvent, <-chan error) {
+func (b *Backend) runInference(ctx context.Context, cmd Command) (<-chan backend.TokenEvent, <-chan error) {
 	events := make(chan backend.TokenEvent, 32)
 	errs := make(chan error, 1)
 	procEvents, procErrs := b.runner.RunStream(ctx, cmd.Dir, cmd.Name, cmd.Args...)
+	
+	prompt := ""
+	for i := 0; i < len(cmd.Args)-1; i++ {
+		if cmd.Args[i] == "-p" {
+			prompt = cmd.Args[i+1]
+			break
+		}
+	}
 	filter := NewStreamFilter(prompt)
 
 	go func() {

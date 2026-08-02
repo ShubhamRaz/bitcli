@@ -24,7 +24,9 @@ var (
 // StreamFilter filters out backend runtime banners, metadata, prompt echoes, and trailing stats.
 type StreamFilter struct {
 	promptLines map[string]bool
+	seenLines   map[string]int
 	started     bool
+	firstToken  bool
 	ended       bool
 }
 
@@ -49,6 +51,8 @@ func NewStreamFilter(prompt string) *StreamFilter {
 	}
 	return &StreamFilter{
 		promptLines: lines,
+		seenLines:   make(map[string]int),
+		firstToken:  true,
 	}
 }
 
@@ -69,7 +73,7 @@ func (f *StreamFilter) Filter(text string) string {
 		if f.isPromptEcho(trimmed) {
 			return ""
 		}
-		if trimmed == "" {
+		if trimmed == "" || trimmed == ":" {
 			return ""
 		}
 		f.started = true
@@ -91,12 +95,30 @@ func (f *StreamFilter) Filter(text string) string {
 		return ""
 	}
 
+	// Anti-loop protection: if the model begins repeating identical sentences/lines, stop cleanly.
+	if trimmed != "" && len(trimmed) > 8 {
+		f.seenLines[trimmed]++
+		if f.seenLines[trimmed] >= 2 {
+			f.ended = true
+			return ""
+		}
+	}
+
 	// Clean out any embedded special tokens or stats
 	result := cleaned
 	for _, tok := range specialTokens {
 		result = strings.ReplaceAll(result, tok, "")
 	}
 	result = promptStatsRegex.ReplaceAllString(result, "")
+
+	if f.firstToken {
+		result = strings.TrimPrefix(result, ": ")
+		result = strings.TrimPrefix(result, ":")
+		result = strings.TrimLeft(result, " ")
+		if result != "" {
+			f.firstToken = false
+		}
+	}
 
 	return result
 }

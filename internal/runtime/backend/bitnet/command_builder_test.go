@@ -73,7 +73,7 @@ func TestBuildCommands(t *testing.T) {
 
 func TestPromptFromMessages(t *testing.T) {
 	prompt := PromptFromMessages([]backend.Message{{Role: "user", Content: "Hello"}})
-	expected := "<|begin_of_text|>System: " + defaultSystemPrompt + "<|eot_id|>\nUser: Hello<|eot_id|>\nAssistant:"
+	expected := "<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\nHello<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
 	if prompt != expected {
 		t.Fatalf("unexpected prompt:\n got: %q\nwant: %q", prompt, expected)
 	}
@@ -84,7 +84,7 @@ func TestPromptFromMessagesWithSystemMessage(t *testing.T) {
 		{Role: "system", Content: "Be brief."},
 		{Role: "user", Content: "Hello"},
 	})
-	expected := "<|begin_of_text|>System: Be brief.<|eot_id|>\nUser: Hello<|eot_id|>\nAssistant:"
+	expected := "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nBe brief.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nHello<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
 	if prompt != expected {
 		t.Fatalf("unexpected prompt:\n got: %q\nwant: %q", prompt, expected)
 	}
