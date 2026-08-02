@@ -4,6 +4,7 @@ package logger
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/bitcli/bitcli/internal/config"
 	"go.uber.org/zap"
@@ -15,11 +16,16 @@ func New(cfg config.Config, paths config.Paths) (*zap.Logger, error) {
 	encoderCfg := zap.NewProductionEncoderConfig()
 	encoderCfg.EncodeTime = zapcore.ISO8601TimeEncoder
 
-	level := zap.NewAtomicLevelAt(ParseLevel(cfg.Logging.Level))
+	fileLevel := zap.NewAtomicLevelAt(ParseLevel(cfg.Logging.Level))
+	consoleLevelVal := zapcore.ErrorLevel
+	if strings.ToLower(strings.TrimSpace(cfg.Logging.Level)) == "debug" {
+		consoleLevelVal = zapcore.DebugLevel
+	}
+	consoleLevel := zap.NewAtomicLevelAt(consoleLevelVal)
 	consoleCore := zapcore.NewCore(
 		zapcore.NewConsoleEncoder(encoderCfg),
 		zapcore.Lock(os.Stderr),
-		level,
+		consoleLevel,
 	)
 
 	cores := []zapcore.Core{consoleCore}
@@ -34,7 +40,7 @@ func New(cfg config.Config, paths config.Paths) (*zap.Logger, error) {
 		cores = append(cores, zapcore.NewCore(
 			zapcore.NewJSONEncoder(encoderCfg),
 			zapcore.AddSync(file),
-			level,
+			fileLevel,
 		))
 	}
 

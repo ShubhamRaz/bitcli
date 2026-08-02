@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/bitcli/bitcli/internal/model"
 	bitruntime "github.com/bitcli/bitcli/internal/runtime"
 	"github.com/spf13/cobra"
 )
@@ -17,46 +18,59 @@ func newRunCommand(opts *rootOptions) *cobra.Command {
 	var modelID string
 	var runtimeOpts bitruntime.Options
 	cmd := &cobra.Command{
-		Use:   "run [MODEL]",
-		Short: "Run a prompt against a local or automatically downloaded BitNet model",
-		Args:  cobra.MaximumNArgs(1),
+		Use:   "run [MODEL] [PROMPT...]",
+		Short: "Run a prompt or start an interactive chat session with a BitNet model",
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			a, cleanup, err := newApp(cmd, opts)
 			if err != nil {
 				return err
 			}
 			defer cleanup()
+
 			if len(args) > 0 {
 				modelID = args[0]
 			}
 			if modelID == "" {
 				modelID = a.cfg.DefaultModel
 			}
-			if prompt == "" {
-				prompt, err = promptFromInput(cmd.InOrStdin(), cmd.OutOrStdout())
+
+			if prompt == "" && len(args) > 1 {
+				prompt = strings.Join(args[1:], " ")
+			}
+
+			// If input is piped (e.g. echo "hello" | bitcli run ...)
+			if prompt == "" && isPipedInput(cmd.InOrStdin()) {
+				data, err := io.ReadAll(cmd.InOrStdin())
 				if err != nil {
 					return err
 				}
+				prompt = strings.TrimSpace(string(data))
 			}
-			if strings.TrimSpace(prompt) == "" {
-				return fmt.Errorf("prompt is required; pass --prompt or type a prompt")
-			}
+
 			m, err := a.ensureModel(cmd.Context(), modelID, os.Stdout)
 			if err != nil {
 				return err
 			}
-			merged := mergeOptions(runtimeOptions(a.cfg), runtimeOpts)
-			events, errs := a.runtime.Generate(cmd.Context(), bitruntime.GenerateRequest{ModelID: m.UserID, Prompt: prompt, Options: merged})
-			for ev := range events {
-				if ev.Text != "" {
-					fmt.Fprint(cmd.OutOrStdout(), ev.Text)
+
+			// If a prompt was provided, run single generation and exit
+			if strings.TrimSpace(prompt) != "" {
+				merged := mergeOptions(runtimeOptions(a.cfg), runtimeOpts)
+				events, errs := a.runtime.Generate(cmd.Context(), bitruntime.GenerateRequest{ModelID: m.UserID, Prompt: prompt, Options: merged})
+				for ev := range events {
+					if ev.Text != "" {
+						fmt.Fprint(cmd.OutOrStdout(), ev.Text)
+					}
 				}
+				if err := <-errs; err != nil {
+					return err
+				}
+				fmt.Fprintln(cmd.OutOrStdout())
+				return nil
 			}
-			if err := <-errs; err != nil {
-				return err
-			}
-			fmt.Fprintln(cmd.OutOrStdout())
-			return nil
+
+			// Otherwise, launch clean interactive multi-turn REPL (like Ollama)
+			return runInteractiveREPL(cmd, a, m, runtimeOpts)
 		},
 	}
 	cmd.Flags().StringVarP(&prompt, "prompt", "p", "", "Prompt to generate from")
@@ -70,20 +84,79 @@ func newRunCommand(opts *rootOptions) *cobra.Command {
 	return cmd
 }
 
-func promptFromInput(in io.Reader, out io.Writer) (string, error) {
+func runInteractiveREPL(cmd *cobra.Command, a *app, m model.Model, runtimeOpts bitruntime.Options) error {
+	out := cmd.OutOrStdout()
+	in := cmd.InOrStdin()
+	reader := bufio.NewScanner(in)
+	messages := make([]bitruntime.Message, 0, 16)
+	mergedOpts := mergeOptions(runtimeOptions(a.cfg), runtimeOpts)
+
+	session, err := a.chats.CreateSession(cmd.Context(), "Interactive session", m.ID)
+	if err != nil {
+		return err
+	}
+
+	for {
+		fmt.Fprint(out, ">>> ")
+		if !reader.Scan() {
+			break
+		}
+		text := strings.TrimSpace(reader.Text())
+		if text == "" {
+			continue
+		}
+		if text == "/exit" || text == "/quit" || text == "/bye" || text == ":q" {
+			break
+		}
+		if text == "/clear" {
+			messages = messages[:0]
+			fmt.Fprintln(out, "Cleared conversation history.")
+			continue
+		}
+		if text == "/help" || text == "/?" {
+			fmt.Fprintln(out, "Available commands:")
+			fmt.Fprintln(out, "  /exit, /bye, /quit   Exit interactive session")
+			fmt.Fprintln(out, "  /clear               Clear conversation history")
+			fmt.Fprintln(out, "  /help, /?            Show help commands")
+			continue
+		}
+
+		_, _ = a.chats.AddMessage(cmd.Context(), session.ID, "user", text, 0)
+		messages = append(messages, bitruntime.Message{Role: "user", Content: text})
+
+		events, errs := a.runtime.Chat(cmd.Context(), bitruntime.ChatRequest{
+			ModelID:  m.UserID,
+			Messages: messages,
+			Options:  mergedOpts,
+		})
+
+		var response strings.Builder
+		for ev := range events {
+			if ev.Text != "" {
+				response.WriteString(ev.Text)
+				fmt.Fprint(out, ev.Text)
+			}
+		}
+		if err := <-errs; err != nil {
+			fmt.Fprintf(out, "\n[Error: %v]\n", err)
+			return err
+		}
+		answer := strings.TrimSpace(response.String())
+		_, _ = a.chats.AddMessage(cmd.Context(), session.ID, "assistant", answer, 0)
+		messages = append(messages, bitruntime.Message{Role: "assistant", Content: answer})
+		fmt.Fprintln(out)
+	}
+	return reader.Err()
+}
+
+func isPipedInput(in io.Reader) bool {
 	if f, ok := in.(*os.File); ok {
 		info, err := f.Stat()
-		if err == nil && info.Mode()&os.ModeCharDevice == 0 {
-			data, err := io.ReadAll(in)
-			return string(data), err
+		if err == nil && (info.Mode()&os.ModeCharDevice == 0) {
+			return true
 		}
 	}
-	fmt.Fprint(out, ">>> ")
-	text, err := bufio.NewReader(in).ReadString('\n')
-	if err != nil && err != io.EOF {
-		return "", err
-	}
-	return strings.TrimSpace(text), nil
+	return false
 }
 
 func mergeOptions(base, override bitruntime.Options) bitruntime.Options {
@@ -110,4 +183,3 @@ func mergeOptions(base, override bitruntime.Options) bitruntime.Options {
 	}
 	return base
 }
-

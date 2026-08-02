@@ -51,10 +51,19 @@ func (b Builder) SetupCommand(m model.Model, opts backend.PrepareOptions) Comman
 	if quant == "" {
 		quant = b.cfg.Backend.BitNet.QuantType
 	}
+	repoID := m.RepoID
+	if repoID == "" {
+		repoID = m.ID
+	}
+	args := []string{"setup_env.py"}
+	if repoID != "" {
+		args = append(args, "-hr", repoID)
+	}
+	args = append(args, "-md", filepath.Dir(m.Path), "-q", quant)
 	return Command{
 		Dir:  b.BackendDir(),
 		Name: b.Python(),
-		Args: []string{"setup_env.py", "-md", filepath.Dir(m.Path), "-q", quant},
+		Args: args,
 	}
 }
 

@@ -3,6 +3,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -21,14 +22,50 @@ func newListCommand(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			out := cmd.OutOrStdout()
 			if len(models) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "No models installed.")
+				fmt.Fprintln(out)
+				fmt.Fprintln(out, "  No models installed yet.")
+				fmt.Fprintln(out, "  Download the recommended 1-bit model:")
+				fmt.Fprintln(out, "    bitcli run microsoft/BitNet-b1.58-2B-4T")
+				fmt.Fprintln(out)
 				return nil
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "NAME\tBACKEND\tQUANT\tPATH")
+
+			fmt.Fprintln(out)
+			fmt.Fprintln(out, "  ╔═══════════════════════════════════════════════════════════════════════════════════╗")
+			fmt.Fprintln(out, "  ║                                Installed BitNet Models                            ║")
+			fmt.Fprintln(out, "  ╚═══════════════════════════════════════════════════════════════════════════════════╝")
+			fmt.Fprintln(out)
+			fmt.Fprintf(out, "    %-34s %-8s %-10s %-16s\n", "MODEL NAME", "QUANT", "SIZE", "BACKEND")
+			fmt.Fprintln(out, "    ───────────────────────────────────────────────────────────────────────────────")
 			for _, m := range models {
-				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\t%s\n", m.UserID, m.Backend, m.Quantization, m.Path)
+				sizeStr := "-"
+				if fi, err := os.Stat(m.Path); err == nil {
+					sizeBytes := fi.Size()
+					if sizeBytes >= 1024*1024*1024 {
+						sizeStr = fmt.Sprintf("%.2f GiB", float64(sizeBytes)/(1024*1024*1024))
+					} else {
+						sizeStr = fmt.Sprintf("%.1f MiB", float64(sizeBytes)/(1024*1024))
+					}
+				}
+				quant := m.Quantization
+				if quant == "" {
+					quant = "i2_s"
+				}
+				backendName := m.Backend
+				if backendName == "" {
+					backendName = "bitnet (1-bit)"
+				}
+				fmt.Fprintf(out, "    %-34s %-8s %-10s %-16s\n", m.UserID, quant, sizeStr, backendName)
 			}
+			fmt.Fprintln(out, "    ───────────────────────────────────────────────────────────────────────────────")
+			fmt.Fprintln(out)
+			fmt.Fprintln(out, "  Usage Tips:")
+			fmt.Fprintln(out, "    Run a prompt : bitcli run <model> -p \"Your prompt\"")
+			fmt.Fprintln(out, "    Start chat   : bitcli chat -m <model>")
+			fmt.Fprintln(out, "    Start server : bitcli serve")
+			fmt.Fprintln(out)
 			return nil
 		},
 	}

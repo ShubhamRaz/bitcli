@@ -12,7 +12,12 @@ func newVersionCommand(opts *rootOptions) *cobra.Command {
 		Use:   "version",
 		Short: "Print BitCLI version information",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprintf(cmd.OutOrStdout(), "bitcli %s\ncommit %s\nbuilt %s\n", opts.version, opts.commit, opts.date)
+			out := cmd.OutOrStdout()
+			ver := opts.version
+			if ver == "" {
+				ver = "v0.1.1-dev"
+			}
+			fmt.Fprintf(out, "bitcli %s (%s, %s)\n", ver, opts.commit, opts.date)
 			return nil
 		},
 	}

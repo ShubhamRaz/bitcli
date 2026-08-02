@@ -87,6 +87,21 @@ func (b *Backend) Prepare(ctx context.Context, m model.Model, opts backend.Prepa
 		return nil
 	}
 
+	// If backend binaries are already compiled and model file is present, mark as prepared
+	backendDir := b.builder.BackendDir()
+	candidateBins := []string{
+		filepath.Join(backendDir, "build", "bin", "llama-cli.exe"),
+		filepath.Join(backendDir, "build", "bin", "Release", "llama-cli.exe"),
+		filepath.Join(backendDir, "build", "bin", "llama-cli"),
+		filepath.Join(backendDir, "build", "bin", "Release", "llama-cli"),
+	}
+	for _, bin := range candidateBins {
+		if _, err := os.Stat(bin); err == nil {
+			_ = os.WriteFile(marker, []byte(time.Now().UTC().Format(time.RFC3339Nano)), 0o644)
+			return nil
+		}
+	}
+
 	cmd := b.builder.SetupCommand(m, opts)
 	b.log.Info("preparing bitnet model", zap.String("dir", cmd.Dir), zap.Strings("args", cmd.Args))
 	if err := b.runner.RunWait(ctx, cmd.Dir, cmd.Name, cmd.Args...); err != nil {
@@ -98,18 +113,19 @@ func (b *Backend) Prepare(ctx context.Context, m model.Model, opts backend.Prepa
 // Generate streams output from official run_inference.py.
 func (b *Backend) Generate(ctx context.Context, m model.Model, req backend.GenerateRequest) (<-chan backend.TokenEvent, <-chan error) {
 	cmd, unsupported := b.builder.GenerateCommand(m, req, false)
-	return b.runInference(ctx, cmd, unsupported)
+	return b.runInference(ctx, cmd, unsupported, req.Prompt)
 }
 
 // Chat streams output from official run_inference.py in conversational mode.
 func (b *Backend) Chat(ctx context.Context, m model.Model, req backend.ChatRequest) (<-chan backend.TokenEvent, <-chan error) {
+	prompt := PromptFromMessages(req.Messages)
 	genReq := backend.GenerateRequest{
 		ModelID: req.ModelID,
-		Prompt:  PromptFromMessages(req.Messages),
+		Prompt:  prompt,
 		Options: req.Options,
 	}
 	cmd, unsupported := b.builder.GenerateCommand(m, genReq, true)
-	return b.runInference(ctx, cmd, unsupported)
+	return b.runInference(ctx, cmd, unsupported, prompt)
 }
 
 // Stop is reserved for long-lived backend sessions.
@@ -128,23 +144,29 @@ func (b *Backend) Version(ctx context.Context) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func (b *Backend) runInference(ctx context.Context, cmd Command, unsupported []string) (<-chan backend.TokenEvent, <-chan error) {
+func (b *Backend) runInference(ctx context.Context, cmd Command, unsupported []string, prompt string) (<-chan backend.TokenEvent, <-chan error) {
 	events := make(chan backend.TokenEvent, 32)
 	errs := make(chan error, 1)
 	procEvents, procErrs := b.runner.RunStream(ctx, cmd.Dir, cmd.Name, cmd.Args...)
+	filter := NewStreamFilter(prompt)
 
 	go func() {
 		defer close(events)
 		defer close(errs)
 		for _, name := range unsupported {
-			b.log.Warn("bitnet.cpp option is not exposed by current run_inference.py", zap.String("option", name))
+			b.log.Debug("bitnet.cpp option is not exposed by current run_inference.py", zap.String("option", name))
 		}
 		for ev := range procEvents {
-			if ev.Stream == "stderr" && process.LooksLikeDiagnostic(ev.Text) {
-				b.log.Warn("bitnet.cpp diagnostic", zap.String("text", strings.TrimSpace(ev.Text)))
+			if ev.Stream == "stderr" {
+				if process.LooksLikeDiagnostic(ev.Text) {
+					b.log.Debug("bitnet.cpp diagnostic", zap.String("text", strings.TrimSpace(ev.Text)))
+				}
 				continue
 			}
-			events <- backend.TokenEvent{Text: CleanToken(ev.Text), CreatedAt: time.Now().UTC()}
+			cleaned := filter.Filter(ev.Text)
+			if cleaned != "" {
+				events <- backend.TokenEvent{Text: cleaned, CreatedAt: time.Now().UTC()}
+			}
 		}
 		if err := <-procErrs; err != nil {
 			errs <- fmt.Errorf("bitnet.cpp inference failed: %w", err)

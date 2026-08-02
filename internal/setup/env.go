@@ -27,6 +27,7 @@ func NewEnvWriter(bitcliHome string) *EnvWriter {
 func (e *EnvWriter) toolDirs() []string {
 	return []string{
 		filepath.Join(e.BitcliHome, "bin"),
+		filepath.Join(e.BitcliHome, "tools", "ninja"),
 		filepath.Join(e.BitcliHome, "tools", "cmake"),
 		filepath.Join(e.BitcliHome, "tools", "cmake", "bin"),
 		filepath.Join(e.BitcliHome, "tools", "clang"),

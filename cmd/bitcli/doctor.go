@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -47,8 +48,9 @@ func newDoctorCommand(opts *rootOptions) *cobra.Command {
 			// ── Toolchain ──────────────────────────────────────────────────
 			printSection(out, "Toolchain")
 			checkToolFancy(out, "Python", "python")
-			checkToolFancy(out, "CMake", "cmake")
-			checkToolFancy(out, "Clang", "clang")
+			checkToolFancy(out, "CMake", "cmake", filepath.Join(a.paths.Root, "tools", "cmake", "bin"), filepath.Join(a.paths.Root, "tools", "cmake"))
+			checkToolFancy(out, "Ninja", "ninja", filepath.Join(a.paths.Root, "tools", "ninja"))
+			checkToolFancy(out, "Clang", "clang", filepath.Join(a.paths.Root, "tools", "clang", "bin"), filepath.Join(a.paths.Root, "tools", "clang"))
 			checkToolFancy(out, "Git", "git")
 			fmt.Fprintln(out)
 
@@ -171,7 +173,23 @@ func printHint(out io.Writer, hint string) {
 	fmt.Fprintf(out, "       → %s\n", hint)
 }
 
-func checkToolFancy(out io.Writer, display, name string) {
+func checkToolFancy(out io.Writer, display, name string, candidateDirs ...string) {
+	// First check candidate dirs
+	for _, dir := range candidateDirs {
+		candidate := filepath.Join(dir, name)
+		if runtime.GOOS == "windows" {
+			candidate += ".exe"
+		}
+		if _, err := os.Stat(candidate); err == nil {
+			short := candidate
+			home, _ := os.UserHomeDir()
+			if home != "" {
+				short = strings.Replace(short, home, "~", 1)
+			}
+			printStatus(out, display, true, short)
+			return
+		}
+	}
 	path, err := exec.LookPath(name)
 	if err != nil {
 		printStatus(out, display, false, "missing")

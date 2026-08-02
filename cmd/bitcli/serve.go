@@ -33,7 +33,18 @@ func newServeCommand(opts *rootOptions) *cobra.Command {
 				Version:   opts.version,
 				Logger:    a.log,
 			})
-			fmt.Fprintf(cmd.OutOrStdout(), "BitCLI listening on http://%s:%d\n", a.cfg.API.Host, a.cfg.API.Port)
+			out := cmd.OutOrStdout()
+			fmt.Fprintln(out)
+			fmt.Fprintln(out, "  ╔══════════════════════════════════════════════════════════════╗")
+			fmt.Fprintln(out, "  ║                BitCLI OpenAI-Compatible API Server          ║")
+			fmt.Fprintln(out, "  ╚══════════════════════════════════════════════════════════════╝")
+			fmt.Fprintf(out, "    Host & Port : http://%s:%d\n", a.cfg.API.Host, a.cfg.API.Port)
+			fmt.Fprintf(out, "    Chat API    : http://%s:%d/v1/chat/completions\n", a.cfg.API.Host, a.cfg.API.Port)
+			fmt.Fprintf(out, "    Models API  : http://%s:%d/v1/models\n", a.cfg.API.Host, a.cfg.API.Port)
+			fmt.Fprintf(out, "    Health API  : http://%s:%d/health\n", a.cfg.API.Host, a.cfg.API.Port)
+			fmt.Fprintln(out, "  ──────────────────────────────────────────────────────────────")
+			fmt.Fprintln(out, "  Ready to accept incoming OpenAI API requests. Press Ctrl+C to stop.")
+			fmt.Fprintln(out)
 			return server.Run(ctx)
 		},
 	}

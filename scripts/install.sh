@@ -69,37 +69,22 @@ printf '  May take several minutes on first run.\n\n'
 printf '\n  -------------------------------------------------------\n'
 printf '  \033[32mBitCLI installed successfully!\033[0m\n\n'
 
-# ── Step 7: Ask to set up permanent PATH ─────────────────────────────────────
+# ── Step 7: Configure permanent PATH & Environment ───────────────────────────
+step "Configuring environment variables"
 ENV_LINE=". \"$BITCLI_HOME/env.sh\""
 
-# Detect current shell config file.
 SHELL_RC=""
 case "$(basename "${SHELL:-sh}")" in
     zsh)  SHELL_RC="$HOME/.zshrc" ;;
     bash) SHELL_RC="$HOME/.bashrc" ;;
-    *)    SHELL_RC="$HOME/.bashrc" ;;
+    *)    SHELL_RC="$HOME/.profile" ;;
 esac
 
-# Check if already configured.
 if grep -qF "env.sh" "$SHELL_RC" 2>/dev/null; then
     ok "BitCLI is already in your PATH ($SHELL_RC)"
 else
-    printf '  \033[36mWould you like to add BitCLI to your PATH permanently?\033[0m\n'
-    printf '  This lets you run "bitcli" from any terminal window.\n\n'
-    printf '  Add to PATH? (y/n): '
-    read -r ANSWER
-
-    case "$ANSWER" in
-        [yY]*)
-            printf '\n%s\n' "$ENV_LINE" >> "$SHELL_RC"
-            ok "Added BitCLI to $SHELL_RC"
-            printf '\n  \033[33mPlease restart your terminal or run:  source %s\033[0m\n' "$SHELL_RC"
-            ;;
-        *)
-            printf '\n  Skipped. You can add it later by running:\n'
-            printf '    \033[33mecho '"'"'%s'"'"' >> %s\033[0m\n' "$ENV_LINE" "$SHELL_RC"
-            ;;
-    esac
+    printf '\n%s\n' "$ENV_LINE" >> "$SHELL_RC"
+    ok "Added BitCLI environment to $SHELL_RC"
 fi
 
 # ── Quick Start ──────────────────────────────────────────────────────────────

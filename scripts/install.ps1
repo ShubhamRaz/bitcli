@@ -96,55 +96,38 @@ if ($LASTEXITCODE -ne 0) {
     Write-Warn "bitcli setup exited $LASTEXITCODE. Run  bitcli setup  to retry."
 }
 
-# ── Step 7: Ask to set up permanent PATH ─────────────────────────────────────
-Write-Host ""
-Write-Host "  -------------------------------------------------------" -ForegroundColor DarkGray
-Write-Host "  BitCLI installed successfully!" -ForegroundColor Green
-Write-Host ""
+# ── Step 7: Configure permanent PATH & Environment ───────────────────────────
+Write-Step "Configuring environment variables"
 
 $currentUserPath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::User)
-$alreadyInPath = $currentUserPath -like "*$BITCLI_BIN*"
-
-if (-not $alreadyInPath) {
-    Write-Host ""
-    Write-Host "  Would you like to add BitCLI to your PATH permanently?" -ForegroundColor Cyan
-    Write-Host "  This lets you run 'bitcli' from any terminal window." -ForegroundColor DarkGray
-    Write-Host ""
-    $answer = Read-Host "  Add to PATH? (y/n)"
-
-    if ($answer -match "^[yY]") {
-        # Add to User PATH environment variable (persists across reboots).
-        [Environment]::SetEnvironmentVariable(
-            "Path",
-            "$currentUserPath;$BITCLI_BIN",
-            [EnvironmentVariableTarget]::User
-        )
-        Write-Ok "Added $BITCLI_BIN to your User PATH"
-
-        # Also add sourcing env.ps1 to PowerShell profile for tool paths.
-        $profilePath = $PROFILE
-        $envLine = ". `"$BITCLI_HOME\env.ps1`""
-        if (Test-Path $profilePath) {
-            $profileContent = Get-Content $profilePath -Raw -ErrorAction SilentlyContinue
-            if ($profileContent -notlike "*env.ps1*") {
-                Add-Content -Path $profilePath -Value "`n$envLine"
-                Write-Ok "Added env.ps1 to PowerShell profile"
-            }
-        } else {
-            New-Item -ItemType File -Path $profilePath -Force | Out-Null
-            Set-Content -Path $profilePath -Value $envLine
-            Write-Ok "Created PowerShell profile with env.ps1"
-        }
-
-        Write-Host ""
-        Write-Host "  Please restart your terminal for changes to take effect." -ForegroundColor Yellow
-    } else {
-        Write-Host ""
-        Write-Host "  Skipped. You can add it later by running:" -ForegroundColor DarkGray
-        Write-Host "    [Environment]::SetEnvironmentVariable('Path', `$env:PATH + ';$BITCLI_BIN', 'User')" -ForegroundColor Yellow
-    }
+if ($currentUserPath -notlike "*$BITCLI_BIN*") {
+    $newPath = if ([string]::IsNullOrEmpty($currentUserPath)) { $BITCLI_BIN } else { "$currentUserPath;$BITCLI_BIN" }
+    [Environment]::SetEnvironmentVariable("Path", $newPath, [EnvironmentVariableTarget]::User)
+    Write-Ok "Added $BITCLI_BIN to User PATH"
 } else {
-    Write-Ok "BitCLI is already in your PATH"
+    Write-Ok "BitCLI is already in User PATH"
+}
+
+# Add env.ps1 to PowerShell profile for toolchain PATH (cmake, ninja, clang, uv)
+$profilePath = $PROFILE
+$envLine = ". `"$BITCLI_HOME\env.ps1`""
+try {
+    if (Test-Path $profilePath) {
+        $profileContent = Get-Content $profilePath -Raw -ErrorAction SilentlyContinue
+        if ($profileContent -notlike "*env.ps1*") {
+            Add-Content -Path $profilePath -Value "`n$envLine"
+            Write-Ok "Added toolchain environment to PowerShell profile"
+        }
+    } else {
+        $profileDir = Split-Path $profilePath
+        if (-not (Test-Path $profileDir)) {
+            New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
+        }
+        Set-Content -Path $profilePath -Value $envLine
+        Write-Ok "Created PowerShell profile with BitCLI environment"
+    }
+} catch {
+    Write-Warn "Could not update PowerShell profile: $_"
 }
 
 # ── Quick Start ──────────────────────────────────────────────────────────────

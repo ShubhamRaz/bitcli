@@ -3,6 +3,7 @@ package process
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -42,6 +43,7 @@ func (r *Runner) RunStream(ctx context.Context, dir, name string, args ...string
 		if dir != "" {
 			cmd.Dir = dir
 		}
+		cmd.Stdin = bytes.NewReader(nil)
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
 			errs <- err

@@ -20,8 +20,9 @@ type rootOptions struct {
 func newRootCommand(version, commit, date string) *cobra.Command {
 	opts := &rootOptions{version: version, commit: commit, date: date}
 	cmd := &cobra.Command{
-		Use:          "bitcli",
-		Short:        "An Ollama-like runtime and model manager for Microsoft BitNet models",
+		Use:           "bitcli",
+		Short:         "An Ollama-like runtime and model manager for Microsoft BitNet models",
+		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Prepend ~/.bitcli/tools/*/bin to PATH so bundled cmake, clang, and uv
@@ -34,6 +35,7 @@ func newRootCommand(version, commit, date string) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.SetVersionTemplate("bitcli {{.Version}}\n")
 	cmd.PersistentFlags().StringVar(&opts.configPath, "config", "", "Path to a BitCLI config file")
 	cmd.PersistentFlags().BoolVarP(&opts.verbose, "verbose", "v", false, "Enable debug logging")
 

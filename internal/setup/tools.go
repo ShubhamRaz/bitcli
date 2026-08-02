@@ -31,7 +31,13 @@ func windowsSpecs() map[string]toolSpec {
 			Name:    "cmake",
 			URL:     "https://github.com/Kitware/CMake/releases/download/v3.31.7/cmake-3.31.7-windows-x86_64.zip",
 			Archive: "zip",
-			BinDir:  "cmake-3.31.7-windows-x86_64/bin",
+			BinDir:  "cmake-3.31.7-windows-x86_64",
+		},
+		"ninja": {
+			Name:    "ninja",
+			URL:     "https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip",
+			Archive: "zip",
+			BinDir:  "",
 		},
 		"clang": {
 			Name:    "clang",
@@ -58,18 +64,28 @@ func darwinSpecs() map[string]toolSpec {
 		uvArch = "aarch64-apple-darwin"
 	}
 	cmakeArch := "macos-universal"
+	ninjaArch := "mac"
+	if runtime.GOARCH == "arm64" {
+		ninjaArch = "mac-arm64"
+	}
 	return map[string]toolSpec{
 		"cmake": {
 			Name:    "cmake",
 			URL:     "https://github.com/Kitware/CMake/releases/download/v3.31.7/cmake-3.31.7-" + cmakeArch + ".tar.gz",
 			Archive: "tar.gz",
-			BinDir:  "cmake-3.31.7-" + cmakeArch + "/CMake.app/Contents/bin",
+			BinDir:  "cmake-3.31.7-" + cmakeArch + "/CMake.app/Contents",
+		},
+		"ninja": {
+			Name:    "ninja",
+			URL:     "https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-" + ninjaArch + ".zip",
+			Archive: "zip",
+			BinDir:  "",
 		},
 		"clang": {
 			Name:    "clang",
 			URL:     "https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.7/clang+llvm-19.1.7-" + arch + "-apple-macosx11.0.tar.xz",
 			Archive: "tar.gz",
-			BinDir:  "clang+llvm-19.1.7-" + arch + "-apple-macosx11.0/bin",
+			BinDir:  "clang+llvm-19.1.7-" + arch + "-apple-macosx11.0",
 		},
 		"uv": {
 			Name:    "uv",
@@ -83,22 +99,30 @@ func darwinSpecs() map[string]toolSpec {
 func linuxSpecs() map[string]toolSpec {
 	arch := "x86_64"
 	uvArch := "x86_64-unknown-linux-gnu"
+	ninjaArch := "linux"
 	if runtime.GOARCH == "arm64" {
 		arch = "aarch64"
 		uvArch = "aarch64-unknown-linux-gnu"
+		ninjaArch = "linux-aarch64"
 	}
 	return map[string]toolSpec{
 		"cmake": {
 			Name:    "cmake",
 			URL:     "https://github.com/Kitware/CMake/releases/download/v3.31.7/cmake-3.31.7-linux-" + arch + ".tar.gz",
 			Archive: "tar.gz",
-			BinDir:  "cmake-3.31.7-linux-" + arch + "/bin",
+			BinDir:  "cmake-3.31.7-linux-" + arch,
+		},
+		"ninja": {
+			Name:    "ninja",
+			URL:     "https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-" + ninjaArch + ".zip",
+			Archive: "zip",
+			BinDir:  "",
 		},
 		"clang": {
 			Name:    "clang",
 			URL:     "https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.7/clang+llvm-19.1.7-" + arch + "-linux-gnu.tar.xz",
 			Archive: "tar.gz",
-			BinDir:  "clang+llvm-19.1.7-" + arch + "-linux-gnu/bin",
+			BinDir:  "clang+llvm-19.1.7-" + arch + "-linux-gnu",
 		},
 		"uv": {
 			Name:    "uv",

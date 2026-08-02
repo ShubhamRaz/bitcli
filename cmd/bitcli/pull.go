@@ -23,11 +23,17 @@ func newPullCommand(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			out := cmd.OutOrStdout()
+			fmt.Fprintln(out)
+			fmt.Fprintf(out, "  ==> Pulling model %s\n", args[0])
 			m, err := a.downloads.PullModel(cmd.Context(), artifact, os.Stdout)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "pulled %s -> %s\n", m.UserID, m.Path)
+			fmt.Fprintln(out)
+			fmt.Fprintf(out, "  ✓  Model successfully downloaded to %s\n", m.Path)
+			fmt.Fprintf(out, "  ✓  Run prompt: bitcli run %s -p \"Your prompt\"\n", m.UserID)
+			fmt.Fprintln(out)
 			return nil
 		},
 	}

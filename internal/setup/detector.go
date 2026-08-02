@@ -20,6 +20,7 @@ type ToolStatus struct {
 type Report struct {
 	Git    ToolStatus
 	CMake  ToolStatus
+	Ninja  ToolStatus
 	Clang  ToolStatus
 	UV     ToolStatus
 	Python ToolStatus
@@ -41,6 +42,7 @@ func (d *Detector) Detect() Report {
 	return Report{
 		Git:    d.probe("git", ""),
 		CMake:  d.probe("cmake", filepath.Join(d.bitcliHome, "tools", "cmake"), filepath.Join(d.bitcliHome, "tools", "cmake", "bin")),
+		Ninja:  d.probe("ninja", filepath.Join(d.bitcliHome, "tools", "ninja")),
 		Clang:  d.probe("clang", filepath.Join(d.bitcliHome, "tools", "clang", "bin"), filepath.Join(d.bitcliHome, "tools", "clang"), filepath.Join(d.bitcliHome, "tools", "llvm", "bin")),
 		UV:     d.probe(uvBinary(), filepath.Join(d.bitcliHome, "tools", "uv")),
 		Python: d.probe("python3", ""),
