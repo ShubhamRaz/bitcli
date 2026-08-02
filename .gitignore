@@ -1,0 +1,11 @@
+# Ignore local build outputs, caches, and editor state for BitCLI.
+/bin/
+/dist/
+/.bitcli/
+*.exe
+*.test
+coverage.out
+.DS_Store
+.idea/
+.vscode/
+
