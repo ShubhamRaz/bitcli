@@ -5,8 +5,9 @@
 # Everything is installed into %USERPROFILE%\.bitcli\
 # To uninstall completely: Remove-Item -Recurse -Force "$HOME\.bitcli"
 
-$ErrorActionPreference = "Stop"
-$ProgressPreference    = "SilentlyContinue"  # Speeds up Invoke-WebRequest
+# NOTE: Do NOT set $ErrorActionPreference = "Stop" globally — git writes to stderr
+# which PowerShell treats as errors. We check $LASTEXITCODE manually instead.
+$ProgressPreference = "SilentlyContinue"  # Speeds up Invoke-WebRequest
 
 # ── Config ──────────────────────────────────────────────────────────────────
 $BITCLI_VERSION = "latest"
@@ -21,11 +22,18 @@ function Write-Step([string]$msg) {
 }
 
 function Write-Ok([string]$msg) {
-    Write-Host "  ✓  $msg" -ForegroundColor Green
+    Write-Host "  v  $msg" -ForegroundColor Green
 }
 
 function Write-Warn([string]$msg) {
     Write-Host "  !  $msg" -ForegroundColor Yellow
+}
+
+function Abort([string]$msg) {
+    Write-Host ""
+    Write-Host "  ERROR: $msg" -ForegroundColor Red
+    Write-Host ""
+    exit 1
 }
 
 # ── Banner ───────────────────────────────────────────────────────────────────
@@ -39,97 +47,96 @@ Write-Host ""
 
 # ── Step 1: Create directory layout ─────────────────────────────────────────
 Write-Step "Creating BitCLI home at $BITCLI_HOME"
-foreach ($dir in @($BITCLI_BIN, (Join-Path $BITCLI_HOME "models"), (Join-Path $BITCLI_HOME "tools"))) {
-    New-Item -ItemType Directory -Force -Path $dir | Out-Null
-}
+New-Item -ItemType Directory -Force -Path $BITCLI_BIN | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $BITCLI_HOME "models") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $BITCLI_HOME "tools") | Out-Null
 Write-Ok "Directory layout created"
 
 # ── Step 2: Check git (required, not bundled) ────────────────────────────────
 Write-Step "Checking for git"
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-    Write-Host ""
-    Write-Host "  ERROR: git is not installed." -ForegroundColor Red
-    Write-Host "  Please install Git for Windows from https://git-scm.com/download/win" -ForegroundColor Red
-    Write-Host "  then re-run this installer." -ForegroundColor Red
-    exit 1
+    Abort "git is not installed.`n  Please install Git from https://git-scm.com/download/win`n  then re-run this installer."
 }
 Write-Ok "git found at $(Get-Command git | Select-Object -ExpandProperty Source)"
 
-# ── Step 3: Download bitcli.exe binary ──────────────────────────────────────
-Write-Step "Downloading BitCLI binary"
+# ── Step 3: Download or build bitcli.exe ─────────────────────────────────────
+Write-Step "Installing BitCLI binary"
 
-$arch = if ([System.Environment]::Is64BitOperatingSystem) { "x86_64" } else { "x86" }
+$arch      = if ([System.Environment]::Is64BitOperatingSystem) { "x86_64" } else { "x86" }
 $assetName = "bitcli-windows-$arch.exe"
+$downloaded = $false
 
+# Try GitHub Releases first.
 if ($BITCLI_VERSION -eq "latest") {
-    $apiUrl  = "https://api.github.com/repos/$GITHUB_REPO/releases/latest"
+    $apiUrl = "https://api.github.com/repos/$GITHUB_REPO/releases/latest"
     try {
-        $release = Invoke-RestMethod -Uri $apiUrl -Headers @{ "User-Agent" = "bitcli-installer" }
+        $release = Invoke-RestMethod -Uri $apiUrl -Headers @{ "User-Agent" = "bitcli-installer/1.0" } -ErrorAction Stop
         $asset   = $release.assets | Where-Object { $_.name -eq $assetName } | Select-Object -First 1
         if ($asset) {
-            $downloadUrl = $asset.browser_download_url
-            Write-Ok "Found release $($release.tag_name)"
-        } else {
-            throw "Asset $assetName not found in release"
+            Write-Host "  Downloading release $($release.tag_name) ..."
+            Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $BINARY -UseBasicParsing -ErrorAction Stop
+            Write-Ok "bitcli.exe downloaded to $BINARY"
+            $downloaded = $true
         }
     } catch {
-        # No GitHub release yet — build from source as fallback
-        Write-Warn "No pre-built release found. Building from source..."
-        $downloadUrl = $null
+        # No release yet — fall through to build-from-source.
     }
-} else {
-    $downloadUrl = "https://github.com/$GITHUB_REPO/releases/download/$BITCLI_VERSION/$assetName"
 }
 
-if ($downloadUrl) {
-    Write-Host "  Downloading from $downloadUrl ..."
-    Invoke-WebRequest -Uri $downloadUrl -OutFile $BINARY -UseBasicParsing
-    Write-Ok "bitcli.exe downloaded to $BINARY"
-} else {
-    # Fallback: build from source if Go is available
-    if (Get-Command go -ErrorAction SilentlyContinue) {
-        Write-Host "  Building bitcli from source (Go detected)..."
-        $tmpSrc = Join-Path $env:TEMP "bitcli-src-$(Get-Random)"
-        git clone --depth=1 "https://github.com/$GITHUB_REPO.git" $tmpSrc 2>&1 | Out-Null
-        Push-Location $tmpSrc
-        try {
-            go build -buildvcs=false -o $BINARY ./cmd/bitcli
-            Write-Ok "bitcli.exe built and installed"
-        } finally {
-            Pop-Location
-            Remove-Item -Recurse -Force $tmpSrc -ErrorAction SilentlyContinue
+if (-not $downloaded) {
+    Write-Warn "No pre-built release binary found. Building from source..."
+
+    if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
+        Abort "Go is not installed and no pre-built binary is available.`n  Install Go from https://go.dev/dl/ then re-run this installer."
+    }
+
+    $tmpSrc = Join-Path $env:TEMP "bitcli-src-$(Get-Random)"
+
+    Write-Host "  Cloning source from https://github.com/$GITHUB_REPO ..."
+    # Redirect stderr->stdout so git progress does not trigger PowerShell errors.
+    $cloneOut = & git clone --depth=1 "https://github.com/$GITHUB_REPO.git" $tmpSrc 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host $cloneOut
+        Abort "git clone failed (exit $LASTEXITCODE). Check your internet connection."
+    }
+
+    Write-Host "  Building binary (this takes ~30s) ..."
+    Push-Location $tmpSrc
+    try {
+        & go build -buildvcs=false -o $BINARY ./cmd/bitcli 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Abort "go build failed (exit $LASTEXITCODE)."
         }
-    } else {
-        Write-Host ""
-        Write-Host "  ERROR: No pre-built binary found and Go is not installed." -ForegroundColor Red
-        Write-Host "  Install Go from https://go.dev/dl/ then re-run this installer." -ForegroundColor Red
-        exit 1
+        Write-Ok "bitcli.exe built and installed at $BINARY"
+    } finally {
+        Pop-Location
+        Remove-Item -Recurse -Force $tmpSrc -ErrorAction SilentlyContinue
     }
 }
 
 # ── Step 4: Add ~/.bitcli/bin to PATH for this session ───────────────────────
 Write-Step "Configuring PATH for this session"
 $env:PATH = "$BITCLI_BIN;$env:PATH"
-Write-Ok "PATH updated (current session)"
+Write-Ok "PATH updated for current session"
 
-# ── Step 5: Run bitcli setup (installs cmake, clang, uv, BitNet backend) ─────
-Write-Step "Running bitcli setup (this may take several minutes)"
+# ── Step 5: Run bitcli setup ─────────────────────────────────────────────────
+Write-Step "Running bitcli setup (installs cmake, clang, uv, BitNet backend)"
+Write-Host "  This may take several minutes on first run." -ForegroundColor DarkGray
 Write-Host ""
 & $BINARY setup
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
-    Write-Host "  ERROR: bitcli setup failed (exit $LASTEXITCODE)." -ForegroundColor Red
-    Write-Host "  Run  bitcli setup  manually once the issue is resolved." -ForegroundColor Red
-    exit $LASTEXITCODE
+    Write-Host "  bitcli setup exited with code $LASTEXITCODE." -ForegroundColor Yellow
+    Write-Host "  Run  bitcli setup  manually to retry." -ForegroundColor Yellow
 }
 
-# ── Step 6: Permanent PATH instructions ──────────────────────────────────────
+# ── Step 6: Done ─────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "  ─────────────────────────────────────────────────────────" -ForegroundColor DarkGray
 Write-Host "  BitCLI is installed!" -ForegroundColor Green
 Write-Host ""
-Write-Host "  The installer added BitCLI tools to PATH for this session." -ForegroundColor White
-Write-Host "  To make it permanent, add this line to your PowerShell profile:" -ForegroundColor White
+Write-Host "  To make BitCLI available in all future PowerShell sessions," -ForegroundColor White
+Write-Host "  add this line to your PowerShell profile:" -ForegroundColor White
 Write-Host ""
 Write-Host "    . `"$BITCLI_HOME\env.ps1`"" -ForegroundColor Yellow
 Write-Host ""
