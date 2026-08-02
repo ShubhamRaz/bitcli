@@ -102,6 +102,15 @@ func (b *Backend) Prepare(ctx context.Context, m model.Model, opts backend.Prepa
 		}
 	}
 
+	// Pre-flight: verify required build tools are available before invoking
+	// setup_env.py, which would fail with an unhelpful exit code.
+	for _, tool := range []string{"cmake", "ninja", "clang"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			return utils.NewError(utils.CodeUnavailable,
+				fmt.Sprintf("%s is required but not found in PATH; run: bitcli setup", tool))
+		}
+	}
+
 	cmd := b.builder.SetupCommand(m, opts)
 	b.log.Info("preparing bitnet model", zap.String("dir", cmd.Dir), zap.Strings("args", cmd.Args))
 	if err := b.runner.RunWait(ctx, cmd.Dir, cmd.Name, cmd.Args...); err != nil {

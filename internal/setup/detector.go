@@ -100,13 +100,13 @@ func execName(name string) string {
 
 // AllPresent returns true when every required tool is found.
 func (r Report) AllPresent() bool {
-	return !r.Git.Missing && !r.CMake.Missing && !r.Clang.Missing && !r.UV.Missing
+	return !r.Git.Missing && !r.CMake.Missing && !r.Ninja.Missing && !r.Clang.Missing && !r.UV.Missing
 }
 
 // Missing returns a slice of ToolStatus for tools that were not found.
 func (r Report) Missing() []ToolStatus {
 	var out []ToolStatus
-	for _, s := range []ToolStatus{r.Git, r.CMake, r.Clang, r.UV} {
+	for _, s := range []ToolStatus{r.Git, r.CMake, r.Ninja, r.Clang, r.UV} {
 		if s.Missing {
 			out = append(out, s)
 		}

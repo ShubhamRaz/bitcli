@@ -15,7 +15,7 @@ func newVersionCommand(opts *rootOptions) *cobra.Command {
 			out := cmd.OutOrStdout()
 			ver := opts.version
 			if ver == "" {
-				ver = "v0.1.1-dev"
+				ver = "v0.1.2-dev"
 			}
 			fmt.Fprintf(out, "bitcli %s (%s, %s)\n", ver, opts.commit, opts.date)
 			return nil

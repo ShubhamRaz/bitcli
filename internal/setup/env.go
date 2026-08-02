@@ -91,6 +91,7 @@ func (e *EnvWriter) writeSH() error {
 func InjectPATH(bitcliHome string) {
 	dirs := []string{
 		filepath.Join(bitcliHome, "bin"),
+		filepath.Join(bitcliHome, "tools", "ninja"),
 		filepath.Join(bitcliHome, "tools", "cmake"),
 		filepath.Join(bitcliHome, "tools", "cmake", "bin"),
 		filepath.Join(bitcliHome, "tools", "clang"),
