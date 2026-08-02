@@ -20,6 +20,7 @@ func DefaultConfig() Config {
 			GPULayers:     0,
 			ContextLength: 4096,
 			MaxTokens:     512,
+			Device:        "cpu",
 		},
 		Backend: BackendConfig{
 			BitNet: BitNetConfig{

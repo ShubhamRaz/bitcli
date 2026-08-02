@@ -84,6 +84,18 @@ func (r *Runner) RunWait(ctx context.Context, dir, name string, args ...string) 
 	return cmd.Run()
 }
 
+// RunWaitVerbose runs a command, captures combined stdout+stderr, and returns
+// the output string. On error, the output is still returned so callers can
+// include diagnostic details in error messages.
+func (r *Runner) RunWaitVerbose(ctx context.Context, dir, name string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
 func scanStream(ctx context.Context, wg *sync.WaitGroup, reader io.Reader, stream string, events chan<- Event) {
 	defer wg.Done()
 	scanner := bufio.NewScanner(reader)

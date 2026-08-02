@@ -59,7 +59,8 @@ func newConfigCommand(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			value, err := svc.Get(opts.configPath, args[0])
+			key := normalizeConfigKey(args[0])
+			value, err := svc.Get(opts.configPath, key)
 			if err != nil {
 				return err
 			}
@@ -76,15 +77,37 @@ func newConfigCommand(opts *rootOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			key := normalizeConfigKey(args[0])
 			value := parseConfigValue(args[1])
-			if err := svc.Set(opts.configPath, args[0], value); err != nil {
+			if err := svc.Set(opts.configPath, key, value); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "set %s\n", args[0])
+			fmt.Fprintf(cmd.OutOrStdout(), "set %s = %v\n", key, value)
 			return nil
 		},
 	})
 	return cmd
+}
+
+func normalizeConfigKey(key string) string {
+	switch strings.ToLower(key) {
+	case "device":
+		return "runtime.device"
+	case "temperature":
+		return "runtime.temperature"
+	case "threads":
+		return "runtime.threads"
+	case "gpu_layers", "gpulayers":
+		return "runtime.gpu_layers"
+	case "context_length", "context":
+		return "runtime.context_length"
+	case "max_tokens":
+		return "runtime.max_tokens"
+	case "model", "default_model":
+		return "default_model"
+	default:
+		return key
+	}
 }
 
 func parseConfigValue(raw string) any {

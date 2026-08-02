@@ -30,6 +30,7 @@ type RuntimeConfig struct {
 	GPULayers     int     `mapstructure:"gpu_layers" yaml:"gpu_layers"`
 	ContextLength int     `mapstructure:"context_length" yaml:"context_length"`
 	MaxTokens     int     `mapstructure:"max_tokens" yaml:"max_tokens"`
+	Device        string  `mapstructure:"device" yaml:"device"`
 }
 
 // BackendConfig groups backend-specific settings.

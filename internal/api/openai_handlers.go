@@ -1,4 +1,4 @@
-// Package api exposes Ollama-compatible and OpenAI-compatible local HTTP endpoints.
+// Package api exposes BitCLI REST API with OpenAI-compatible endpoints.
 package api
 
 import (

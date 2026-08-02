@@ -6,10 +6,10 @@ BitCLI is a Go CLI tool and local HTTP API server that manages and runs Microsof
 
 ## Design Principles
 
-- **No inference code** — BitCLI never implements language model math; it delegates to `run_inference.py`.
+- **No inference code** — BitCLI never implements language model math; it delegates to the compiled BitNet backend.
 - **Backend abstraction** — The `backend.Backend` interface makes it possible to swap in llama.cpp, ONNX Runtime, or any future runtime without CLI changes.
 - **Local-first** — All data (models, chat history, downloads) lives in `~/.bitcli/`.
-- **Ollama-compatible** — The API speaks Ollama's wire format so existing Ollama-aware tools work out of the box.
+- **Standards-compliant API** — The API provides clean native REST endpoints and standard OpenAI-compatible endpoints.
 
 ---
 
@@ -33,7 +33,7 @@ bitcli/
 │   └── update.go        bitcli update backend bitnet
 │
 ├── internal/
-│   ├── api/             Gin HTTP server (Ollama + OpenAI endpoints)
+│   ├── api/             Gin HTTP server (BitCLI REST + OpenAI endpoints)
 │   ├── cache/           On-disk model cache layout and safety checks
 │   ├── config/          YAML config schema, defaults, validation, Viper service
 │   ├── database/        SQLite connection, schema migrations, 3 repositories

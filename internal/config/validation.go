@@ -30,6 +30,9 @@ func Validate(cfg Config) error {
 	if cfg.Download.Mirror == "" {
 		return utils.NewError(utils.CodeConfigInvalid, "download mirror is required")
 	}
+	if cfg.Runtime.Device != "" && cfg.Runtime.Device != "cpu" && cfg.Runtime.Device != "gpu" {
+		return utils.NewError(utils.CodeConfigInvalid, fmt.Sprintf("device must be \"cpu\" or \"gpu\", got %q", cfg.Runtime.Device))
+	}
 	return nil
 }
 

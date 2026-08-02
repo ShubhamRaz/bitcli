@@ -3,7 +3,9 @@ package bitnet
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/bitcli/bitcli/internal/config"
@@ -45,7 +47,28 @@ func (b Builder) Python() string {
 	return "python"
 }
 
-// SetupCommand builds the official setup_env.py invocation.
+// LlamaCLIPath resolves the compiled llama-cli binary inside the backend build directory.
+// On Windows it checks build/bin/Release/ first (MSVC/ClangCL layout), then build/bin/.
+func (b Builder) LlamaCLIPath() string {
+	backendDir := b.BackendDir()
+	ext := ""
+	if runtime.GOOS == "windows" {
+		ext = ".exe"
+	}
+	candidates := []string{
+		filepath.Join(backendDir, "build", "bin", "Release", "llama-cli"+ext),
+		filepath.Join(backendDir, "build", "bin", "llama-cli"+ext),
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c
+		}
+	}
+	// Return the most likely path even if not yet built.
+	return candidates[0]
+}
+
+// SetupCommand builds the official setup_env.py invocation (kept as fallback).
 func (b Builder) SetupCommand(m model.Model, opts backend.PrepareOptions) Command {
 	quant := opts.Quantization
 	if quant == "" {
@@ -67,10 +90,54 @@ func (b Builder) SetupCommand(m model.Model, opts backend.PrepareOptions) Comman
 	}
 }
 
-// GenerateCommand builds the official run_inference.py invocation.
-func (b Builder) GenerateCommand(m model.Model, req backend.GenerateRequest, conversation bool) (Command, []string) {
+// CodegenCommand builds the Python kernel codegen script invocation.
+// This generates optimized BitNet kernels without needing pip.
+func (b Builder) CodegenCommand() Command {
 	args := []string{
-		"run_inference.py",
+		"utils/codegen_tl2.py",
+		"--model", "bitnet_b1_58-3B",
+		"--BM", "160,320,320",
+		"--BK", "96,96,96",
+		"--bm", "32,32,32",
+	}
+	return Command{Dir: b.BackendDir(), Name: b.Python(), Args: args}
+}
+
+// CMakeConfigureCommand builds the cmake configuration step.
+func (b Builder) CMakeConfigureCommand() Command {
+	args := []string{
+		"-B", "build",
+		"-G", "Ninja",
+		"-DBITNET_X86_TL2=OFF",
+		"-DCMAKE_C_COMPILER=clang",
+		"-DCMAKE_CXX_COMPILER=clang++",
+		"-DLLAMA_BUILD_TOOLS=ON",
+		"-DLLAMA_BUILD_EXAMPLES=ON",
+		"-DLLAMA_BUILD_COMMON=ON",
+		"-DLLAMA_BUILD_SERVER=OFF",
+	}
+	if runtime.GOOS == "windows" {
+		args = append(args,
+			"-DCMAKE_C_FLAGS=-D_WIN32_WINNT=0x0A00",
+			"-DCMAKE_CXX_FLAGS=-D_WIN32_WINNT=0x0A00",
+		)
+	}
+	return Command{Dir: b.BackendDir(), Name: "cmake", Args: args}
+}
+
+// CMakeBuildCommand builds the cmake compilation step.
+func (b Builder) CMakeBuildCommand() Command {
+	return Command{
+		Dir:  b.BackendDir(),
+		Name: "cmake",
+		Args: []string{"--build", "build", "--config", "Release", "--target", "llama-cli"},
+	}
+}
+
+// GenerateCommand builds a direct llama-cli invocation for text generation.
+// This bypasses run_inference.py for full control over flags and GPU support.
+func (b Builder) GenerateCommand(m model.Model, req backend.GenerateRequest, conversation bool) Command {
+	args := []string{
 		"-m", m.Path,
 		"-p", req.Prompt,
 	}
@@ -84,7 +151,7 @@ func (b Builder) GenerateCommand(m model.Model, req backend.GenerateRequest, con
 		args = append(args, "-c", fmt.Sprintf("%d", req.Options.ContextLength))
 	}
 	if req.Options.Temperature > 0 {
-		args = append(args, "-temp", fmt.Sprintf("%.4f", req.Options.Temperature))
+		args = append(args, "--temp", fmt.Sprintf("%.4f", req.Options.Temperature))
 	}
 	if req.Options.TopP > 0 {
 		args = append(args, "--top-p", fmt.Sprintf("%.4f", req.Options.TopP))
@@ -92,15 +159,16 @@ func (b Builder) GenerateCommand(m model.Model, req backend.GenerateRequest, con
 	if req.Options.TopK > 0 {
 		args = append(args, "--top-k", fmt.Sprintf("%d", req.Options.TopK))
 	}
+	// GPU layers: 0 = CPU only, >0 = offload layers to GPU
+	ngl := 0
+	if req.Options.GPULayers > 0 {
+		ngl = req.Options.GPULayers
+	}
+	args = append(args, "-ngl", fmt.Sprintf("%d", ngl))
 	if conversation {
 		args = append(args, "-cnv")
 	}
-
-	unsupported := make([]string, 0, 1)
-	if req.Options.GPULayers != 0 {
-		unsupported = append(unsupported, "gpu_layers")
-	}
-	return Command{Dir: b.BackendDir(), Name: b.Python(), Args: args}, unsupported
+	return Command{Dir: b.BackendDir(), Name: b.LlamaCLIPath(), Args: args}
 }
 
 // defaultSystemPrompt is injected when no system message is provided so the
@@ -149,4 +217,3 @@ func PromptFromMessages(messages []backend.Message) string {
 	sb.WriteString("Assistant:")
 	return sb.String()
 }
-

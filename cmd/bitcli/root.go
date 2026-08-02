@@ -21,7 +21,7 @@ func newRootCommand(version, commit, date string) *cobra.Command {
 	opts := &rootOptions{version: version, commit: commit, date: date}
 	cmd := &cobra.Command{
 		Use:           "bitcli",
-		Short:         "An Ollama-like runtime and model manager for Microsoft BitNet models",
+		Short:         "A fast runtime and model manager for Microsoft BitNet models",
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -48,6 +48,7 @@ func newRootCommand(version, commit, date string) *cobra.Command {
 	cmd.AddCommand(newDoctorCommand(opts))
 	cmd.AddCommand(newVersionCommand(opts))
 	cmd.AddCommand(newConfigCommand(opts))
+	cmd.AddCommand(newDeviceCommand(opts))
 	cmd.AddCommand(newUpdateCommand(opts))
 	cmd.AddCommand(newSetupCommand(opts))
 	return cmd

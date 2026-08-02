@@ -1,0 +1,4 @@
+Defaulting to user installation because normal site-packages is not writeable
+ERROR: Invalid requirement: '3rdparty/llama.cpp/gguf-py': Expected semicolon (after name with no version specifier) or end
+    3rdparty/llama.cpp/gguf-py
+            ^

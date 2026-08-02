@@ -3,6 +3,7 @@ package bitnet
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/bitcli/bitcli/internal/config"
@@ -10,12 +11,12 @@ import (
 	"github.com/bitcli/bitcli/internal/runtime/backend"
 )
 
-func TestGenerateCommandUsesOfficialRunInferenceScript(t *testing.T) {
+func TestGenerateCommandDirectLlamaCLI(t *testing.T) {
 	cfg := config.DefaultConfig()
 	paths := config.Paths{BackendDir: filepath.Join("tmp", "backends")}
 	builder := NewBuilder(cfg, paths)
 	m := model.Model{Path: filepath.Join("models", "ggml-model-i2_s.gguf")}
-	cmd, unsupported := builder.GenerateCommand(m, backend.GenerateRequest{
+	cmd := builder.GenerateCommand(m, backend.GenerateRequest{
 		Prompt: "hello",
 		Options: backend.Options{
 			Temperature:   0.7,
@@ -23,17 +24,44 @@ func TestGenerateCommandUsesOfficialRunInferenceScript(t *testing.T) {
 			ContextLength: 4096,
 			MaxTokens:     32,
 			TopP:          0.9,
+			GPULayers:     99,
 		},
 	}, true)
 
-	if cmd.Name != "python" {
-		t.Fatalf("unexpected command name: %s", cmd.Name)
+	if !strings.Contains(cmd.Name, "llama-cli") {
+		t.Fatalf("expected command name to contain llama-cli, got %s", cmd.Name)
 	}
-	if cmd.Args[0] != "run_inference.py" {
-		t.Fatalf("expected run_inference.py, got %s", cmd.Args[0])
+	// Verify flags
+	argsStr := strings.Join(cmd.Args, " ")
+	if !strings.Contains(argsStr, "-m") || !strings.Contains(argsStr, "-p hello") {
+		t.Fatalf("expected model and prompt in args, got %s", argsStr)
 	}
-	if len(unsupported) != 0 {
-		t.Fatalf("unexpected unsupported options: %#v", unsupported)
+	if !strings.Contains(argsStr, "-ngl 99") {
+		t.Fatalf("expected -ngl 99 in args, got %s", argsStr)
+	}
+	if !strings.Contains(argsStr, "-cnv") {
+		t.Fatalf("expected -cnv in args, got %s", argsStr)
+	}
+}
+
+func TestBuildCommands(t *testing.T) {
+	cfg := config.DefaultConfig()
+	paths := config.Paths{BackendDir: filepath.Join("tmp", "backends")}
+	builder := NewBuilder(cfg, paths)
+
+	codegen := builder.CodegenCommand()
+	if codegen.Name != "python" || len(codegen.Args) == 0 || codegen.Args[0] != "utils/codegen_tl2.py" {
+		t.Fatalf("unexpected codegen command: %#v", codegen)
+	}
+
+	cmakeConf := builder.CMakeConfigureCommand()
+	if cmakeConf.Name != "cmake" || cmakeConf.Args[0] != "-B" {
+		t.Fatalf("unexpected cmake configure command: %#v", cmakeConf)
+	}
+
+	cmakeBuild := builder.CMakeBuildCommand()
+	if cmakeBuild.Name != "cmake" || cmakeBuild.Args[0] != "--build" {
+		t.Fatalf("unexpected cmake build command: %#v", cmakeBuild)
 	}
 }
 

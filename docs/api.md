@@ -8,7 +8,7 @@ No authentication is required for local requests. CORS origins can be restricted
 
 ---
 
-## Ollama-Compatible Endpoints
+## Native REST Endpoints
 
 ### `POST /api/generate`
 

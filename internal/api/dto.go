@@ -1,18 +1,18 @@
-// Package api exposes Ollama-compatible and OpenAI-compatible local HTTP endpoints.
+// Package api exposes BitCLI REST API with OpenAI-compatible endpoints.
 package api
 
 import "github.com/bitcli/bitcli/internal/runtime"
 
-// OllamaGenerateRequest is the request body for POST /api/generate.
-type OllamaGenerateRequest struct {
+// GenerateRequest is the request body for POST /api/generate.
+type GenerateRequest struct {
 	Model   string                 `json:"model"`
 	Prompt  string                 `json:"prompt"`
 	Stream  *bool                  `json:"stream,omitempty"`
 	Options map[string]any         `json:"options,omitempty"`
 }
 
-// OllamaChatRequest is the request body for POST /api/chat.
-type OllamaChatRequest struct {
+// ChatRequest is the request body for POST /api/chat.
+type ChatRequest struct {
 	Model    string            `json:"model"`
 	Messages []runtime.Message `json:"messages"`
 	Stream   *bool             `json:"stream,omitempty"`

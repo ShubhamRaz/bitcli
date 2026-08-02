@@ -69,7 +69,7 @@ func newRunCommand(opts *rootOptions) *cobra.Command {
 				return nil
 			}
 
-			// Otherwise, launch clean interactive multi-turn REPL (like Ollama)
+			// Otherwise, launch clean interactive multi-turn REPL
 			return runInteractiveREPL(cmd, a, m, runtimeOpts)
 		},
 	}

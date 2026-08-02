@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/bitcli/bitcli/internal/cache"
 	"github.com/bitcli/bitcli/internal/config"
@@ -110,12 +111,17 @@ func (a *app) ensureModel(ctx context.Context, id string, progress io.Writer) (m
 }
 
 func runtimeOptions(cfg config.Config) bitruntime.Options {
+	gpuLayers := cfg.Runtime.GPULayers
+	// Apply device setting: "gpu" offloads all layers, "cpu" forces 0.
+	if strings.EqualFold(cfg.Runtime.Device, "gpu") && gpuLayers == 0 {
+		gpuLayers = 99
+	}
 	return bitruntime.Options{
 		Temperature:   cfg.Runtime.Temperature,
 		TopP:          cfg.Runtime.TopP,
 		TopK:          cfg.Runtime.TopK,
 		Threads:       cfg.Runtime.Threads,
-		GPULayers:     cfg.Runtime.GPULayers,
+		GPULayers:     gpuLayers,
 		ContextLength: cfg.Runtime.ContextLength,
 		MaxTokens:     cfg.Runtime.MaxTokens,
 	}

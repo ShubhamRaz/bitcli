@@ -1,6 +1,6 @@
 # BitCLI
 
-BitCLI is an Ollama-like runtime and model manager for Microsoft BitNet models. It provides a modern Go CLI, local HTTP API, model cache, downloader, SQLite metadata store, hardware diagnostics, chat history, and a backend adapter for Microsoft's official `bitnet.cpp`.
+BitCLI is a fast, standalone runtime and model manager for Microsoft BitNet models. It provides a modern Go CLI, local HTTP API, model cache, downloader, SQLite metadata store, hardware diagnostics, chat history, and a backend adapter for Microsoft's official `bitnet.cpp`.
 
 BitCLI does not implement inference and does not modify BitNet. Model execution is delegated to the official Microsoft BitNet repository.
 
@@ -81,12 +81,14 @@ bitcli version
 bitcli config path
 bitcli config get runtime.temperature
 bitcli config set runtime.temperature 0.7
+bitcli config set runtime.device gpu    # switch to GPU inference
+bitcli config set runtime.device cpu    # switch back to CPU
 bitcli update backend bitnet
 ```
 
 ## API
 
-BitCLI serves Ollama-compatible endpoints:
+BitCLI serves local REST API endpoints:
 
 - `POST /api/chat`
 - `POST /api/generate`

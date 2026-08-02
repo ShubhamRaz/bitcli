@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -52,7 +51,7 @@ func (b *Backend) Detect(ctx context.Context) (backend.Status, error) {
 	status := backend.Status{ID: b.ID(), Path: dir}
 	if !HealthFilesExist(dir) {
 		status.Ready = false
-		status.Message = "official BitNet checkout was not found; run bitcli doctor or bitcli update backend bitnet"
+		status.Message = "official BitNet checkout was not found; run bitcli setup"
 		return status, nil
 	}
 	version, err := b.Version(ctx)
@@ -65,7 +64,9 @@ func (b *Backend) Detect(ctx context.Context) (backend.Status, error) {
 	return status, nil
 }
 
-// Prepare invokes setup_env.py once per model and quantization.
+// Prepare ensures the llama-cli binary is compiled. It first checks for
+// an existing binary, and if missing, builds it using cmake directly
+// (bypassing setup_env.py which has pip dependency issues).
 func (b *Backend) Prepare(ctx context.Context, m model.Model, opts backend.PrepareOptions) error {
 	status, err := b.Detect(ctx)
 	if err != nil {
@@ -87,48 +88,61 @@ func (b *Backend) Prepare(ctx context.Context, m model.Model, opts backend.Prepa
 		return nil
 	}
 
-	// If backend binaries are already compiled and model file is present, mark as prepared
-	backendDir := b.builder.BackendDir()
-	candidateBins := []string{
-		filepath.Join(backendDir, "build", "bin", "llama-cli.exe"),
-		filepath.Join(backendDir, "build", "bin", "Release", "llama-cli.exe"),
-		filepath.Join(backendDir, "build", "bin", "llama-cli"),
-		filepath.Join(backendDir, "build", "bin", "Release", "llama-cli"),
-	}
-	for _, bin := range candidateBins {
-		if _, err := os.Stat(bin); err == nil {
-			_ = os.WriteFile(marker, []byte(time.Now().UTC().Format(time.RFC3339Nano)), 0o644)
-			return nil
-		}
+	// Check if llama-cli is already compiled.
+	llamaCLI := b.builder.LlamaCLIPath()
+	if _, err := os.Stat(llamaCLI); err == nil {
+		_ = os.WriteFile(marker, []byte(time.Now().UTC().Format(time.RFC3339Nano)), 0o644)
+		return nil
 	}
 
-	// Pre-flight: verify required build tools are available before invoking
-	// setup_env.py, which would fail with an unhelpful exit code.
-	for _, tool := range []string{"cmake", "ninja", "clang"} {
-		if _, err := exec.LookPath(tool); err != nil {
-			return utils.NewError(utils.CodeUnavailable,
-				fmt.Sprintf("%s is required but not found in PATH; run: bitcli setup", tool))
-		}
+	// ── Build llama-cli from source using cmake directly ──
+	// This bypasses setup_env.py which fails due to pip issues on some systems.
+	b.log.Info("llama-cli not found, building from source via cmake")
+
+	// Step 1: Run kernel codegen (Python script, no pip needed).
+	codegen := b.builder.CodegenCommand()
+	b.log.Info("running kernel codegen", zap.Strings("args", codegen.Args))
+	if output, err := b.runner.RunWaitVerbose(ctx, codegen.Dir, codegen.Name, codegen.Args...); err != nil {
+		b.log.Warn("kernel codegen failed (non-fatal, using defaults)", zap.Error(err), zap.String("output", output))
+		// Non-fatal: the build may still succeed with default kernels.
 	}
 
-	cmd := b.builder.SetupCommand(m, opts)
-	b.log.Info("preparing bitnet model", zap.String("dir", cmd.Dir), zap.Strings("args", cmd.Args))
-	if err := b.runner.RunWait(ctx, cmd.Dir, cmd.Name, cmd.Args...); err != nil {
-		return utils.WrapError(utils.CodeUnavailable, "bitnet.cpp setup failed", err)
+	// Step 2: cmake configure.
+	configure := b.builder.CMakeConfigureCommand()
+	b.log.Info("cmake configure", zap.Strings("args", configure.Args))
+	if output, err := b.runner.RunWaitVerbose(ctx, configure.Dir, configure.Name, configure.Args...); err != nil {
+		return utils.NewError(utils.CodeUnavailable,
+			fmt.Sprintf("cmake configure failed: %v\n%s", err, output))
 	}
-	return os.WriteFile(marker, []byte(time.Now().UTC().Format(time.RFC3339Nano)), 0o644)
+
+	// Step 3: cmake build.
+	build := b.builder.CMakeBuildCommand()
+	b.log.Info("cmake build", zap.Strings("args", build.Args))
+	if output, err := b.runner.RunWaitVerbose(ctx, build.Dir, build.Name, build.Args...); err != nil {
+		return utils.NewError(utils.CodeUnavailable,
+			fmt.Sprintf("cmake build failed: %v\n%s", err, output))
+	}
+
+	// Verify binary was produced.
+	if _, err := os.Stat(b.builder.LlamaCLIPath()); err != nil {
+		return utils.NewError(utils.CodeUnavailable,
+			"cmake build completed but llama-cli binary was not found; check build output above")
+	}
+
+	_ = os.WriteFile(marker, []byte(time.Now().UTC().Format(time.RFC3339Nano)), 0o644)
+	b.log.Info("llama-cli built successfully", zap.String("path", b.builder.LlamaCLIPath()))
+	return nil
 }
 
-// Generate streams output from official run_inference.py.
+// Generate streams output from llama-cli.
 func (b *Backend) Generate(ctx context.Context, m model.Model, req backend.GenerateRequest) (<-chan backend.TokenEvent, <-chan error) {
-	cmd, unsupported := b.builder.GenerateCommand(m, req, false)
-	return b.runInference(ctx, cmd, unsupported, req.Prompt)
+	cmd := b.builder.GenerateCommand(m, req, false)
+	return b.runInference(ctx, cmd, req.Prompt)
 }
 
-// Chat streams output from official run_inference.py using the full chat
-// history formatted with the model's trained chat template. Each call
-// re-sends the entire conversation so we use one-shot mode (no -cnv),
-// which works reliably with the process runner's empty stdin.
+// Chat streams output from llama-cli using the full chat history
+// formatted with the model's trained chat template. Each call
+// re-sends the entire conversation in one-shot mode.
 func (b *Backend) Chat(ctx context.Context, m model.Model, req backend.ChatRequest) (<-chan backend.TokenEvent, <-chan error) {
 	prompt := PromptFromMessages(req.Messages)
 	genReq := backend.GenerateRequest{
@@ -136,8 +150,8 @@ func (b *Backend) Chat(ctx context.Context, m model.Model, req backend.ChatReque
 		Prompt:  prompt,
 		Options: req.Options,
 	}
-	cmd, unsupported := b.builder.GenerateCommand(m, genReq, false)
-	return b.runInference(ctx, cmd, unsupported, prompt)
+	cmd := b.builder.GenerateCommand(m, genReq, false)
+	return b.runInference(ctx, cmd, prompt)
 }
 
 // Stop is reserved for long-lived backend sessions.
@@ -148,15 +162,14 @@ func (b *Backend) Stop(ctx context.Context, sessionID string) error {
 // Version reports the current git revision for the official BitNet checkout when available.
 func (b *Backend) Version(ctx context.Context) (string, error) {
 	dir := b.builder.BackendDir()
-	cmd := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "--short", "HEAD")
-	out, err := cmd.Output()
+	output, err := b.runner.RunWaitVerbose(ctx, "", "git", "-C", dir, "rev-parse", "--short", "HEAD")
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(string(out)), nil
+	return strings.TrimSpace(output), nil
 }
 
-func (b *Backend) runInference(ctx context.Context, cmd Command, unsupported []string, prompt string) (<-chan backend.TokenEvent, <-chan error) {
+func (b *Backend) runInference(ctx context.Context, cmd Command, prompt string) (<-chan backend.TokenEvent, <-chan error) {
 	events := make(chan backend.TokenEvent, 32)
 	errs := make(chan error, 1)
 	procEvents, procErrs := b.runner.RunStream(ctx, cmd.Dir, cmd.Name, cmd.Args...)
@@ -165,9 +178,6 @@ func (b *Backend) runInference(ctx context.Context, cmd Command, unsupported []s
 	go func() {
 		defer close(events)
 		defer close(errs)
-		for _, name := range unsupported {
-			b.log.Debug("bitnet.cpp option is not exposed by current run_inference.py", zap.String("option", name))
-		}
 		for ev := range procEvents {
 			if ev.Stream == "stderr" {
 				if process.LooksLikeDiagnostic(ev.Text) {
@@ -190,4 +200,3 @@ func (b *Backend) runInference(ctx context.Context, cmd Command, unsupported []s
 
 	return events, errs
 }
-

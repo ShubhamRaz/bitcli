@@ -1,4 +1,4 @@
-// Package api exposes Ollama-compatible and OpenAI-compatible local HTTP endpoints.
+// Package api exposes BitCLI REST API with OpenAI-compatible endpoints.
 package api
 
 import (
@@ -11,8 +11,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func (s *Server) handleOllamaGenerate(c *gin.Context) {
-	var req OllamaGenerateRequest
+func (s *Server) handleGenerate(c *gin.Context) {
+	var req GenerateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		writeError(c, http.StatusBadRequest, err)
 		return
@@ -43,8 +43,8 @@ func (s *Server) handleOllamaGenerate(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"model": m.UserID, "response": text, "done": true})
 }
 
-func (s *Server) handleOllamaChat(c *gin.Context) {
-	var req OllamaChatRequest
+func (s *Server) handleChat(c *gin.Context) {
+	var req ChatRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		writeError(c, http.StatusBadRequest, err)
 		return
