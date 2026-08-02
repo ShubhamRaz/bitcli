@@ -35,9 +35,9 @@ func windowsSpecs() map[string]toolSpec {
 		},
 		"clang": {
 			Name:    "clang",
-			URL:     "https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.7/LLVM-19.1.7-win64.exe",
-			Archive: "exe",
-			BinDir:  "bin",
+			URL:     "https://github.com/mstorsjo/llvm-mingw/releases/download/20241119/llvm-mingw-20241119-ucrt-x86_64.zip",
+			Archive: "zip",
+			BinDir:  "llvm-mingw-20241119-ucrt-x86_64",
 		},
 		"uv": {
 			Name:    "uv",

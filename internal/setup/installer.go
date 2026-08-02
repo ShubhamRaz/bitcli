@@ -45,7 +45,12 @@ func (t *ToolInstaller) Install(ctx context.Context, toolName string) (string, e
 
 	// Check if already installed.
 	binary := filepath.Join(destBin, execName(toolName))
+	binarySub := filepath.Join(destBin, "bin", execName(toolName))
 	if _, err := os.Stat(binary); err == nil {
+		fmt.Fprintf(t.Out, "  ✓ %s already installed at %s\n", toolName, destBin)
+		return destBin, nil
+	}
+	if _, err := os.Stat(binarySub); err == nil {
 		fmt.Fprintf(t.Out, "  ✓ %s already installed at %s\n", toolName, destBin)
 		return destBin, nil
 	}
@@ -67,10 +72,11 @@ func (t *ToolInstaller) Install(ctx context.Context, toolName string) (string, e
 	tmpFile.Close()
 
 	// Extract.
-	if err := os.MkdirAll(filepath.Join(t.BitcliHome, "tools", toolName+"_extract"), 0o755); err != nil {
+	extractDir := filepath.Join(t.BitcliHome, "tools", toolName+"_extract")
+	_ = os.RemoveAll(extractDir)
+	if err := os.MkdirAll(extractDir, 0o755); err != nil {
 		return "", err
 	}
-	extractDir := filepath.Join(t.BitcliHome, "tools", toolName+"_extract")
 	defer os.RemoveAll(extractDir)
 
 	fmt.Fprintf(t.Out, "  ⚙ Extracting %s...\n", toolName)
@@ -85,7 +91,6 @@ func (t *ToolInstaller) Install(ctx context.Context, toolName string) (string, e
 			return "", fmt.Errorf("extract %s: %w", toolName, err)
 		}
 	case "exe":
-		// LLVM Windows self-extracting installer: run with /S /D=<dest>
 		if err := t.runSilentInstaller(ctx, tmpPath, destBin); err != nil {
 			return "", fmt.Errorf("install %s: %w", toolName, err)
 		}
@@ -95,11 +100,12 @@ func (t *ToolInstaller) Install(ctx context.Context, toolName string) (string, e
 		return "", fmt.Errorf("unsupported archive format %q", spec.Archive)
 	}
 
-	// Move the bin dir into place.
+	// Move the tool dir into place.
 	srcBin := filepath.Join(extractDir, filepath.FromSlash(spec.BinDir))
 	if err := os.MkdirAll(filepath.Dir(destBin), 0o755); err != nil {
 		return "", err
 	}
+	_ = os.RemoveAll(destBin)
 	if err := os.Rename(srcBin, destBin); err != nil {
 		// Rename across volumes may fail — fall back to copy.
 		if err2 := copyDir(srcBin, destBin); err2 != nil {

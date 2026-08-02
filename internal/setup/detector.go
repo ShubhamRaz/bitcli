@@ -40,20 +40,23 @@ func NewDetector(bitcliHome string) *Detector {
 func (d *Detector) Detect() Report {
 	return Report{
 		Git:    d.probe("git", ""),
-		CMake:  d.probe("cmake", filepath.Join(d.bitcliHome, "tools", "cmake", "bin")),
-		Clang:  d.probe("clang", filepath.Join(d.bitcliHome, "tools", "llvm", "bin")),
+		CMake:  d.probe("cmake", filepath.Join(d.bitcliHome, "tools", "cmake"), filepath.Join(d.bitcliHome, "tools", "cmake", "bin")),
+		Clang:  d.probe("clang", filepath.Join(d.bitcliHome, "tools", "clang", "bin"), filepath.Join(d.bitcliHome, "tools", "clang"), filepath.Join(d.bitcliHome, "tools", "llvm", "bin")),
 		UV:     d.probe(uvBinary(), filepath.Join(d.bitcliHome, "tools", "uv")),
 		Python: d.probe("python3", ""),
 	}
 }
 
-// probe tries to resolve a binary first in bundledDir (if non-empty), then on PATH.
-func (d *Detector) probe(name, bundledDir string) ToolStatus {
+// probe tries to resolve a binary first in candidateDirs (if non-empty), then on PATH.
+func (d *Detector) probe(name string, candidateDirs ...string) ToolStatus {
 	s := ToolStatus{Name: name}
 
-	// Try bundled location first.
-	if bundledDir != "" {
-		candidate := filepath.Join(bundledDir, execName(name))
+	// Try bundled locations first.
+	for _, dir := range candidateDirs {
+		if dir == "" {
+			continue
+		}
+		candidate := filepath.Join(dir, execName(name))
 		if path, err := exec.LookPath(candidate); err == nil {
 			s.Path = path
 			s.Bundled = true

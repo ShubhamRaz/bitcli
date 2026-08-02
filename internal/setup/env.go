@@ -28,6 +28,9 @@ func (e *EnvWriter) toolDirs() []string {
 	return []string{
 		filepath.Join(e.BitcliHome, "bin"),
 		filepath.Join(e.BitcliHome, "tools", "cmake"),
+		filepath.Join(e.BitcliHome, "tools", "cmake", "bin"),
+		filepath.Join(e.BitcliHome, "tools", "clang"),
+		filepath.Join(e.BitcliHome, "tools", "clang", "bin"),
 		filepath.Join(e.BitcliHome, "tools", "llvm", "bin"),
 		filepath.Join(e.BitcliHome, "tools", "uv"),
 	}
@@ -88,6 +91,9 @@ func InjectPATH(bitcliHome string) {
 	dirs := []string{
 		filepath.Join(bitcliHome, "bin"),
 		filepath.Join(bitcliHome, "tools", "cmake"),
+		filepath.Join(bitcliHome, "tools", "cmake", "bin"),
+		filepath.Join(bitcliHome, "tools", "clang"),
+		filepath.Join(bitcliHome, "tools", "clang", "bin"),
 		filepath.Join(bitcliHome, "tools", "llvm", "bin"),
 		filepath.Join(bitcliHome, "tools", "uv"),
 	}
