@@ -4,6 +4,22 @@ BitCLI is an Ollama-like runtime and model manager for Microsoft BitNet models. 
 
 BitCLI does not implement inference and does not modify BitNet. Model execution is delegated to the official Microsoft BitNet repository.
 
+## Install
+
+**Windows** (PowerShell — one line, requires Git):
+```powershell
+irm https://raw.githubusercontent.com/bitcli/bitcli/main/scripts/install.ps1 | iex
+```
+
+**Linux / macOS** (one line, requires Git):
+```bash
+curl -fsSL https://raw.githubusercontent.com/bitcli/bitcli/main/scripts/install.sh | sh
+```
+
+Everything is installed into `~/.bitcli/`. To uninstall completely, delete that folder.
+See [docs/install.md](docs/install.md) for details including custom directories and offline setup.
+
+
 ## Status
 
 This repository is a production-oriented, feature-complete implementation of BitCLI. It includes the core architecture, CLI, API server, model manager, downloader, backend abstraction, BitNet adapter, hardware detection, chat history, unit tests, integration tests, and documentation.
@@ -50,6 +66,8 @@ The default model cache is `~/.bitcli/models` on Windows, Linux, and macOS.
 ## Commands
 
 ```bash
+bitcli setup
+bitcli setup --skip-backend
 bitcli pull MODEL
 bitcli run [MODEL] --prompt "Hello"
 bitcli chat
