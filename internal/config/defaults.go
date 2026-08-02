@@ -5,7 +5,7 @@ package config
 func DefaultConfig() Config {
 	return Config{
 		Version:        1,
-		DefaultModel:  "microsoft/BitNet-b1.58-2B-4T",
+		DefaultModel:   "microsoft/BitNet-b1.58-2B-4T",
 		DefaultBackend: "bitnet",
 		API: APIConfig{
 			Host:         "127.0.0.1",
@@ -13,7 +13,7 @@ func DefaultConfig() Config {
 			AllowOrigins: []string{},
 		},
 		Runtime: RuntimeConfig{
-			Temperature:   0.8,
+			Temperature:   0.2,
 			TopP:          0.9,
 			TopK:          40,
 			Threads:       0,
@@ -44,4 +44,3 @@ func DefaultConfig() Config {
 		},
 	}
 }
-
