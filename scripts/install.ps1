@@ -84,7 +84,7 @@ Write-Step "Updating PATH for this session"
 if ($env:PATH -notlike "*$BITCLI_BIN*") {
     $env:PATH = "$BITCLI_BIN;$env:PATH"
 }
-Write-Ok "PATH updated"
+Write-Ok "PATH updated for current session"
 
 # ── Step 6: Run bitcli setup ─────────────────────────────────────────────────
 Write-Step "Running bitcli setup"
@@ -96,18 +96,65 @@ if ($LASTEXITCODE -ne 0) {
     Write-Warn "bitcli setup exited $LASTEXITCODE. Run  bitcli setup  to retry."
 }
 
-# ── Done ─────────────────────────────────────────────────────────────────────
+# ── Step 7: Ask to set up permanent PATH ─────────────────────────────────────
 Write-Host ""
 Write-Host "  -------------------------------------------------------" -ForegroundColor DarkGray
 Write-Host "  BitCLI installed successfully!" -ForegroundColor Green
 Write-Host ""
-Write-Host "  Quick start:" -ForegroundColor White
-Write-Host "    bitcli doctor" -ForegroundColor Yellow
-Write-Host "    bitcli pull microsoft/BitNet-b1.58-2B-4T" -ForegroundColor Yellow
-Write-Host "    bitcli run --prompt `"Hello!`"" -ForegroundColor Yellow
+
+$currentUserPath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::User)
+$alreadyInPath = $currentUserPath -like "*$BITCLI_BIN*"
+
+if (-not $alreadyInPath) {
+    Write-Host ""
+    Write-Host "  Would you like to add BitCLI to your PATH permanently?" -ForegroundColor Cyan
+    Write-Host "  This lets you run 'bitcli' from any terminal window." -ForegroundColor DarkGray
+    Write-Host ""
+    $answer = Read-Host "  Add to PATH? (y/n)"
+
+    if ($answer -match "^[yY]") {
+        # Add to User PATH environment variable (persists across reboots).
+        [Environment]::SetEnvironmentVariable(
+            "Path",
+            "$currentUserPath;$BITCLI_BIN",
+            [EnvironmentVariableTarget]::User
+        )
+        Write-Ok "Added $BITCLI_BIN to your User PATH"
+
+        # Also add sourcing env.ps1 to PowerShell profile for tool paths.
+        $profilePath = $PROFILE
+        $envLine = ". `"$BITCLI_HOME\env.ps1`""
+        if (Test-Path $profilePath) {
+            $profileContent = Get-Content $profilePath -Raw -ErrorAction SilentlyContinue
+            if ($profileContent -notlike "*env.ps1*") {
+                Add-Content -Path $profilePath -Value "`n$envLine"
+                Write-Ok "Added env.ps1 to PowerShell profile"
+            }
+        } else {
+            New-Item -ItemType File -Path $profilePath -Force | Out-Null
+            Set-Content -Path $profilePath -Value $envLine
+            Write-Ok "Created PowerShell profile with env.ps1"
+        }
+
+        Write-Host ""
+        Write-Host "  Please restart your terminal for changes to take effect." -ForegroundColor Yellow
+    } else {
+        Write-Host ""
+        Write-Host "  Skipped. You can add it later by running:" -ForegroundColor DarkGray
+        Write-Host "    [Environment]::SetEnvironmentVariable('Path', `$env:PATH + ';$BITCLI_BIN', 'User')" -ForegroundColor Yellow
+    }
+} else {
+    Write-Ok "BitCLI is already in your PATH"
+}
+
+# ── Quick Start ──────────────────────────────────────────────────────────────
 Write-Host ""
-Write-Host "  Permanent PATH — add to PowerShell profile (notepad `$PROFILE):" -ForegroundColor White
-Write-Host "    . `"$BITCLI_HOME\env.ps1`"" -ForegroundColor Yellow
+Write-Host "  Quick start:" -ForegroundColor White
+Write-Host "    bitcli doctor                                 # check system" -ForegroundColor Yellow
+Write-Host "    bitcli pull microsoft/BitNet-b1.58-2B-4T      # download model" -ForegroundColor Yellow
+Write-Host "    bitcli run --prompt `"Hello!`"                   # run inference" -ForegroundColor Yellow
+Write-Host "    bitcli chat                                   # interactive chat" -ForegroundColor Yellow
+Write-Host "    bitcli serve                                  # start API server" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "  Uninstall: Remove-Item -Recurse -Force `"$BITCLI_HOME`"" -ForegroundColor DarkGray
 Write-Host ""

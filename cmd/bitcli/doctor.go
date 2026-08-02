@@ -4,9 +4,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/bitcli/bitcli/internal/runtime/backend/bitnet"
@@ -23,58 +25,163 @@ func newDoctorCommand(opts *rootOptions) *cobra.Command {
 				return err
 			}
 			defer cleanup()
-			ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 			defer cancel()
 
-			fmt.Fprintln(cmd.OutOrStdout(), "BitCLI doctor")
-			fmt.Fprintf(cmd.OutOrStdout(), "config: %s\n", a.paths.ConfigFile)
-			fmt.Fprintf(cmd.OutOrStdout(), "database: %s\n", a.paths.DatabaseFile)
-			fmt.Fprintf(cmd.OutOrStdout(), "go runtime: %s\n", runtime.Version())
+			out := cmd.OutOrStdout()
 
-			checkTool(cmd, "python")
-			checkTool(cmd, "cmake")
-			checkTool(cmd, "clang")
-			checkTool(cmd, "git")
+			// ── Header ─────────────────────────────────────────────────────
+			fmt.Fprintln(out)
+			fmt.Fprintln(out, "  ╔══════════════════════════════════════════════════════╗")
+			fmt.Fprintln(out, "  ║              BitCLI System Diagnostics               ║")
+			fmt.Fprintln(out, "  ╚══════════════════════════════════════════════════════╝")
+			fmt.Fprintln(out)
 
+			// ── Configuration ──────────────────────────────────────────────
+			printSection(out, "Configuration")
+			printRow(out, "Config", a.paths.ConfigFile)
+			printRow(out, "Database", a.paths.DatabaseFile)
+			printRow(out, "Runtime", runtime.Version())
+			fmt.Fprintln(out)
+
+			// ── Toolchain ──────────────────────────────────────────────────
+			printSection(out, "Toolchain")
+			checkToolFancy(out, "Python", "python")
+			checkToolFancy(out, "CMake", "cmake")
+			checkToolFancy(out, "Clang", "clang")
+			checkToolFancy(out, "Git", "git")
+			fmt.Fprintln(out)
+
+			// ── BitNet Backend ──────────────────────────────────────────────
+			printSection(out, "BitNet Backend")
 			status, err := bitnet.New(a.cfg, a.paths, a.runner, a.log).Detect(ctx)
 			if err != nil {
-				fmt.Fprintf(cmd.OutOrStdout(), "bitnet.cpp: error: %v\n", err)
+				printStatus(out, "bitnet.cpp", false, fmt.Sprintf("error: %v", err))
 			} else if status.Ready {
-				fmt.Fprintf(cmd.OutOrStdout(), "bitnet.cpp: ok (%s)\n", status.Path)
+				printStatus(out, "bitnet.cpp", true, status.Path)
 			} else {
-				fmt.Fprintf(cmd.OutOrStdout(), "bitnet.cpp: missing (%s)\n", status.Message)
+				printStatus(out, "bitnet.cpp", false, status.Message)
+				printHint(out, "Run: bitcli setup")
 			}
+			fmt.Fprintln(out)
 
+			// ── Hardware ───────────────────────────────────────────────────
+			printSection(out, "Hardware")
 			report := a.hardware.Report(ctx)
-			fmt.Fprintf(cmd.OutOrStdout(), "cpu: %s (%d threads)\n", report.CPUName, report.CPUThreads)
-			fmt.Fprintf(cmd.OutOrStdout(), "instructions: avx2=%t avx512=%t\n", report.AVX2, report.AVX512)
-			fmt.Fprintf(cmd.OutOrStdout(), "accelerators: cuda=%t metal=%t rocm=%t\n", report.CUDA, report.Metal, report.ROCm)
-			fmt.Fprintf(cmd.OutOrStdout(), "ram: %.1f GiB\n", float64(report.RAMBytes)/(1024*1024*1024))
-			fmt.Fprintf(cmd.OutOrStdout(), "recommended model: %s\n", report.RecommendedModel)
-			fmt.Fprintf(cmd.OutOrStdout(), "estimated tokens/sec: %s\n", report.EstimatedTokSec)
-			for _, warning := range report.Warnings {
-				fmt.Fprintf(cmd.OutOrStdout(), "warning: %s\n", warning)
+
+			cpuLabel := report.CPUName
+			if cpuLabel == "" || cpuLabel == "amd64" || cpuLabel == "arm64" {
+				cpuLabel = runtime.GOARCH
+			}
+			printRow(out, "CPU", fmt.Sprintf("%s", cpuLabel))
+			printRow(out, "Cores / Threads", fmt.Sprintf("%d threads", report.CPUThreads))
+			printRow(out, "Architecture", report.Arch)
+
+			// RAM
+			ramGiB := float64(report.RAMBytes) / (1024 * 1024 * 1024)
+			if ramGiB > 0.1 {
+				printRow(out, "RAM", fmt.Sprintf("%.1f GiB", ramGiB))
+			} else {
+				printRow(out, "RAM", "could not detect")
+			}
+			fmt.Fprintln(out)
+
+			// ── Instruction Sets ───────────────────────────────────────────
+			printSection(out, "Instruction Sets")
+			printFeature(out, "AVX2", report.AVX2)
+			printFeature(out, "AVX-512", report.AVX512)
+			fmt.Fprintln(out)
+
+			// ── Accelerators ───────────────────────────────────────────────
+			printSection(out, "Accelerators")
+			printFeature(out, "CUDA (NVIDIA)", report.CUDA)
+			printFeature(out, "Metal (Apple)", report.Metal)
+			printFeature(out, "ROCm (AMD)", report.ROCm)
+			if len(report.GPUs) > 0 {
+				for _, gpu := range report.GPUs {
+					vram := ""
+					if gpu.VRAMBytes > 0 {
+						vram = fmt.Sprintf(" (%.1f GiB VRAM)", float64(gpu.VRAMBytes)/(1024*1024*1024))
+					}
+					printRow(out, "  GPU", fmt.Sprintf("%s [%s]%s", gpu.Name, gpu.Backend, vram))
+				}
+			}
+			fmt.Fprintln(out)
+
+			// ── Model Recommendation ───────────────────────────────────────
+			printSection(out, "Recommendation")
+			printRow(out, "Model", report.RecommendedModel)
+			printRow(out, "Performance", report.EstimatedTokSec)
+			printRow(out, "Model Cache", a.paths.ModelDir)
+			fmt.Fprintln(out)
+
+			// ── Warnings ───────────────────────────────────────────────────
+			if len(report.Warnings) > 0 {
+				printSection(out, "Warnings")
+				for _, w := range report.Warnings {
+					fmt.Fprintf(out, "    ⚠  %s\n", w)
+				}
+				fmt.Fprintln(out)
 			}
 
+			// ── Cache ──────────────────────────────────────────────────────
 			if err := a.cache.Ensure(); err != nil {
-				fmt.Fprintf(cmd.OutOrStdout(), "model cache: error: %v\n", err)
-			} else {
-				fmt.Fprintf(cmd.OutOrStdout(), "model cache: %s\n", a.paths.ModelDir)
+				fmt.Fprintf(out, "    ✗  Model cache error: %v\n\n", err)
 			}
+
+			// ── Overall Status ─────────────────────────────────────────────
 			if _, err := os.Stat(a.paths.ConfigFile); err == nil {
-				fmt.Fprintln(cmd.OutOrStdout(), "configuration: ok")
+				fmt.Fprintln(out, "  ──────────────────────────────────────────────────────")
+				fmt.Fprintln(out, "  ✓  System check complete — configuration OK")
+				fmt.Fprintln(out)
 			}
+
 			return nil
 		},
 	}
 }
 
-func checkTool(cmd *cobra.Command, name string) {
-	path, err := exec.LookPath(name)
-	if err != nil {
-		fmt.Fprintf(cmd.OutOrStdout(), "%s: missing\n", name)
-		return
-	}
-	fmt.Fprintf(cmd.OutOrStdout(), "%s: %s\n", name, path)
+// ── Display Helpers ─────────────────────────────────────────────────────────
+
+func printSection(out io.Writer, title string) {
+	fmt.Fprintf(out, "  ── %s ──\n", title)
 }
 
+func printRow(out io.Writer, label, value string) {
+	fmt.Fprintf(out, "    %-18s %s\n", label+":", value)
+}
+
+func printStatus(out io.Writer, label string, ok bool, detail string) {
+	icon := "✓"
+	if !ok {
+		icon = "✗"
+	}
+	fmt.Fprintf(out, "    %s  %-14s %s\n", icon, label, detail)
+}
+
+func printFeature(out io.Writer, label string, supported bool) {
+	if supported {
+		fmt.Fprintf(out, "    ✓  %-18s supported\n", label)
+	} else {
+		fmt.Fprintf(out, "    ·  %-18s not detected\n", label)
+	}
+}
+
+func printHint(out io.Writer, hint string) {
+	fmt.Fprintf(out, "       → %s\n", hint)
+}
+
+func checkToolFancy(out io.Writer, display, name string) {
+	path, err := exec.LookPath(name)
+	if err != nil {
+		printStatus(out, display, false, "missing")
+		return
+	}
+	// Shorten path for readability.
+	short := path
+	home, _ := os.UserHomeDir()
+	if home != "" {
+		short = strings.Replace(short, home, "~", 1)
+	}
+	printStatus(out, display, true, short)
+}

@@ -27,7 +27,16 @@ func fillMemory(ctx context.Context, report *Report) {
 		out := commandOutput(ctx, "sysctl", "-n", "hw.memsize")
 		report.RAMBytes, _ = strconv.ParseUint(strings.TrimSpace(out), 10, 64)
 	case "windows":
-		out := commandOutput(ctx, "wmic", "ComputerSystem", "get", "TotalPhysicalMemory", "/value")
+		// Use PowerShell Get-CimInstance instead of deprecated wmic.
+		out := commandOutput(ctx, "powershell", "-NoProfile", "-Command",
+			"(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory")
+		out = strings.TrimSpace(out)
+		if v, err := strconv.ParseUint(out, 10, 64); err == nil && v > 0 {
+			report.RAMBytes = v
+			return
+		}
+		// Fallback to wmic for older Windows.
+		out = commandOutput(ctx, "wmic", "ComputerSystem", "get", "TotalPhysicalMemory", "/value")
 		for _, line := range strings.Split(out, "\n") {
 			if strings.HasPrefix(strings.TrimSpace(line), "TotalPhysicalMemory=") {
 				report.RAMBytes, _ = strconv.ParseUint(strings.TrimPrefix(strings.TrimSpace(line), "TotalPhysicalMemory="), 10, 64)
@@ -35,4 +44,3 @@ func fillMemory(ctx context.Context, report *Report) {
 		}
 	}
 }
-

@@ -68,10 +68,45 @@ printf '  May take several minutes on first run.\n\n'
 # ── Done ─────────────────────────────────────────────────────────────────────
 printf '\n  -------------------------------------------------------\n'
 printf '  \033[32mBitCLI installed successfully!\033[0m\n\n'
-printf '  Quick start:\n'
-printf '    \033[33mbitcli doctor\033[0m\n'
-printf '    \033[33mbitcli pull microsoft/BitNet-b1.58-2B-4T\033[0m\n'
-printf '    \033[33mbitcli run --prompt "Hello!"\033[0m\n\n'
-printf '  Permanent PATH — add to ~/.bashrc or ~/.zshrc:\n'
-printf '    \033[33m. "%s/env.sh"\033[0m\n\n' "$BITCLI_HOME"
+
+# ── Step 7: Ask to set up permanent PATH ─────────────────────────────────────
+ENV_LINE=". \"$BITCLI_HOME/env.sh\""
+
+# Detect current shell config file.
+SHELL_RC=""
+case "$(basename "${SHELL:-sh}")" in
+    zsh)  SHELL_RC="$HOME/.zshrc" ;;
+    bash) SHELL_RC="$HOME/.bashrc" ;;
+    *)    SHELL_RC="$HOME/.bashrc" ;;
+esac
+
+# Check if already configured.
+if grep -qF "env.sh" "$SHELL_RC" 2>/dev/null; then
+    ok "BitCLI is already in your PATH ($SHELL_RC)"
+else
+    printf '  \033[36mWould you like to add BitCLI to your PATH permanently?\033[0m\n'
+    printf '  This lets you run "bitcli" from any terminal window.\n\n'
+    printf '  Add to PATH? (y/n): '
+    read -r ANSWER
+
+    case "$ANSWER" in
+        [yY]*)
+            printf '\n%s\n' "$ENV_LINE" >> "$SHELL_RC"
+            ok "Added BitCLI to $SHELL_RC"
+            printf '\n  \033[33mPlease restart your terminal or run:  source %s\033[0m\n' "$SHELL_RC"
+            ;;
+        *)
+            printf '\n  Skipped. You can add it later by running:\n'
+            printf '    \033[33mecho '"'"'%s'"'"' >> %s\033[0m\n' "$ENV_LINE" "$SHELL_RC"
+            ;;
+    esac
+fi
+
+# ── Quick Start ──────────────────────────────────────────────────────────────
+printf '\n  Quick start:\n'
+printf '    \033[33mbitcli doctor\033[0m                                 # check system\n'
+printf '    \033[33mbitcli pull microsoft/BitNet-b1.58-2B-4T\033[0m      # download model\n'
+printf '    \033[33mbitcli run --prompt "Hello!"\033[0m                   # run inference\n'
+printf '    \033[33mbitcli chat\033[0m                                   # interactive chat\n'
+printf '    \033[33mbitcli serve\033[0m                                  # start API server\n\n'
 printf '  Uninstall: rm -rf "%s"\n\n' "$BITCLI_HOME"
