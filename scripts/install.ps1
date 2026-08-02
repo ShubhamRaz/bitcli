@@ -1,6 +1,6 @@
 # BitCLI Installer for Windows
 # Usage (one-liner from PowerShell):
-#   irm https://raw.githubusercontent.com/bitcli/bitcli/main/scripts/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/ShubhamRaz/bitcli/main/scripts/install.ps1 | iex
 #
 # Everything is installed into %USERPROFILE%\.bitcli\
 # To uninstall completely: Remove-Item -Recurse -Force "$HOME\.bitcli"
@@ -13,7 +13,7 @@ $BITCLI_VERSION = "latest"
 $BITCLI_HOME    = if ($env:BITCLI_HOME) { $env:BITCLI_HOME } else { Join-Path $HOME ".bitcli" }
 $BITCLI_BIN     = Join-Path $BITCLI_HOME "bin"
 $BINARY         = Join-Path $BITCLI_BIN "bitcli.exe"
-$GITHUB_REPO    = "bitcli/bitcli"
+$GITHUB_REPO    = "ShubhamRaz/bitcli"
 
 function Write-Step([string]$msg) {
     Write-Host ""

@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # BitCLI Installer for Linux and macOS
 # Usage (one-liner):
-#   curl -fsSL https://raw.githubusercontent.com/bitcli/bitcli/main/scripts/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/ShubhamRaz/bitcli/main/scripts/install.sh | sh
 #
 # Everything is installed into $HOME/.bitcli/
 # To uninstall completely: rm -rf "$HOME/.bitcli"
@@ -12,7 +12,7 @@ BITCLI_VERSION="${BITCLI_VERSION:-latest}"
 BITCLI_HOME="${BITCLI_HOME:-$HOME/.bitcli}"
 BITCLI_BIN="$BITCLI_HOME/bin"
 BINARY="$BITCLI_BIN/bitcli"
-GITHUB_REPO="bitcli/bitcli"
+GITHUB_REPO="ShubhamRaz/bitcli"
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 step()   { printf '\n  \033[36m==>\033[0m %s\n' "$*"; }

@@ -8,12 +8,12 @@ BitCLI does not implement inference and does not modify BitNet. Model execution 
 
 **Windows** (PowerShell — one line, requires Git):
 ```powershell
-irm https://raw.githubusercontent.com/bitcli/bitcli/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/ShubhamRaz/bitcli/main/scripts/install.ps1 | iex
 ```
 
 **Linux / macOS** (one line, requires Git):
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bitcli/bitcli/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/ShubhamRaz/bitcli/main/scripts/install.sh | sh
 ```
 
 Everything is installed into `~/.bitcli/`. To uninstall completely, delete that folder.

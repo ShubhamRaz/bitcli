@@ -17,13 +17,13 @@ BitCLI uses a fully self-contained install model — everything lives inside a s
 ### Windows (PowerShell — one line)
 
 ```powershell
-irm https://raw.githubusercontent.com/bitcli/bitcli/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/ShubhamRaz/bitcli/main/scripts/install.ps1 | iex
 ```
 
 ### Linux / macOS (one line)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bitcli/bitcli/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/ShubhamRaz/bitcli/main/scripts/install.sh | sh
 ```
 
 Both installers:
@@ -135,12 +135,12 @@ By default BitCLI installs to `~/.bitcli`. You can override this:
 **Windows**
 ```powershell
 $env:BITCLI_HOME = "D:\BitCLI"
-irm https://raw.githubusercontent.com/bitcli/bitcli/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/ShubhamRaz/bitcli/main/scripts/install.ps1 | iex
 ```
 
 **Linux / macOS**
 ```bash
-BITCLI_HOME=/opt/bitcli curl -fsSL https://raw.githubusercontent.com/bitcli/bitcli/main/scripts/install.sh | sh
+BITCLI_HOME=/opt/bitcli curl -fsSL https://raw.githubusercontent.com/ShubhamRaz/bitcli/main/scripts/install.sh | sh
 ```
 
 ---
