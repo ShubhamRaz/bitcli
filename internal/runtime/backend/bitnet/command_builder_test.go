@@ -32,15 +32,27 @@ func TestGenerateCommandUsesOfficialRunInferenceScript(t *testing.T) {
 	if cmd.Args[0] != "run_inference.py" {
 		t.Fatalf("expected run_inference.py, got %s", cmd.Args[0])
 	}
-	if len(unsupported) != 1 || unsupported[0] != "top_p" {
+	if len(unsupported) != 0 {
 		t.Fatalf("unexpected unsupported options: %#v", unsupported)
 	}
 }
 
 func TestPromptFromMessages(t *testing.T) {
 	prompt := PromptFromMessages([]backend.Message{{Role: "user", Content: "Hello"}})
-	if prompt != "User: Hello\nAssistant:" {
-		t.Fatalf("unexpected prompt: %q", prompt)
+	expected := "<|begin_of_text|>System: " + defaultSystemPrompt + "<|eot_id|>\nUser: Hello<|eot_id|>\nAssistant:"
+	if prompt != expected {
+		t.Fatalf("unexpected prompt:\n got: %q\nwant: %q", prompt, expected)
+	}
+}
+
+func TestPromptFromMessagesWithSystemMessage(t *testing.T) {
+	prompt := PromptFromMessages([]backend.Message{
+		{Role: "system", Content: "Be brief."},
+		{Role: "user", Content: "Hello"},
+	})
+	expected := "<|begin_of_text|>System: Be brief.<|eot_id|>\nUser: Hello<|eot_id|>\nAssistant:"
+	if prompt != expected {
+		t.Fatalf("unexpected prompt:\n got: %q\nwant: %q", prompt, expected)
 	}
 }
 

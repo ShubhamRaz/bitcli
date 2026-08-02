@@ -116,7 +116,10 @@ func (b *Backend) Generate(ctx context.Context, m model.Model, req backend.Gener
 	return b.runInference(ctx, cmd, unsupported, req.Prompt)
 }
 
-// Chat streams output from official run_inference.py in conversational mode.
+// Chat streams output from official run_inference.py using the full chat
+// history formatted with the model's trained chat template. Each call
+// re-sends the entire conversation so we use one-shot mode (no -cnv),
+// which works reliably with the process runner's empty stdin.
 func (b *Backend) Chat(ctx context.Context, m model.Model, req backend.ChatRequest) (<-chan backend.TokenEvent, <-chan error) {
 	prompt := PromptFromMessages(req.Messages)
 	genReq := backend.GenerateRequest{
@@ -124,7 +127,7 @@ func (b *Backend) Chat(ctx context.Context, m model.Model, req backend.ChatReque
 		Prompt:  prompt,
 		Options: req.Options,
 	}
-	cmd, unsupported := b.builder.GenerateCommand(m, genReq, true)
+	cmd, unsupported := b.builder.GenerateCommand(m, genReq, false)
 	return b.runInference(ctx, cmd, unsupported, prompt)
 }
 

@@ -55,3 +55,23 @@ func TestCleanToken(t *testing.T) {
 		t.Fatalf("expected 'Hello \\n', got %q", tok)
 	}
 }
+
+func TestStreamFilterStopsAtEotID(t *testing.T) {
+	filter := NewStreamFilter("test prompt")
+	// Simulate the filter seeing a header, then response, then eot_id.
+	filter.Filter("Loading model...\n")
+	filter.Filter("> test prompt\n")
+	res1 := filter.Filter("Paris is great.\n")
+	res2 := filter.Filter("More info.<|eot_id|>\n")
+	res3 := filter.Filter("This should not appear.\n")
+
+	if res1 != "Paris is great.\n" {
+		t.Fatalf("expected first line, got %q", res1)
+	}
+	if res2 != "More info." {
+		t.Fatalf("expected text before eot_id, got %q", res2)
+	}
+	if res3 != "" {
+		t.Fatalf("expected empty after eot_id, got %q", res3)
+	}
+}

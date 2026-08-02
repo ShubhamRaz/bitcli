@@ -86,26 +86,53 @@ func (b Builder) GenerateCommand(m model.Model, req backend.GenerateRequest, con
 	if req.Options.Temperature > 0 {
 		args = append(args, "-temp", fmt.Sprintf("%.4f", req.Options.Temperature))
 	}
+	if req.Options.TopP > 0 {
+		args = append(args, "--top-p", fmt.Sprintf("%.4f", req.Options.TopP))
+	}
+	if req.Options.TopK > 0 {
+		args = append(args, "--top-k", fmt.Sprintf("%d", req.Options.TopK))
+	}
 	if conversation {
 		args = append(args, "-cnv")
 	}
 
-	unsupported := make([]string, 0, 3)
-	if req.Options.TopP != 0 {
-		unsupported = append(unsupported, "top_p")
-	}
-	if req.Options.TopK != 0 {
-		unsupported = append(unsupported, "top_k")
-	}
+	unsupported := make([]string, 0, 1)
 	if req.Options.GPULayers != 0 {
 		unsupported = append(unsupported, "gpu_layers")
 	}
 	return Command{Dir: b.BackendDir(), Name: b.Python(), Args: args}, unsupported
 }
 
-// PromptFromMessages converts a chat transcript into a plain prompt for bitnet.cpp conversational mode.
+// defaultSystemPrompt is injected when no system message is provided so the
+// model behaves as a helpful assistant rather than a raw text completer.
+const defaultSystemPrompt = "You are a helpful, concise, and friendly AI assistant. Answer the user's questions clearly and accurately."
+
+// PromptFromMessages converts a chat transcript into the chat template format
+// that BitNet-b1.58-2B-4T was trained on:
+//
+//	<|begin_of_text|>System: {system}<|eot_id|>
+//	User: {msg}<|eot_id|>
+//	Assistant: {msg}<|eot_id|>
+//	...
+//	Assistant:
 func PromptFromMessages(messages []backend.Message) string {
 	var sb strings.Builder
+	sb.WriteString("<|begin_of_text|>")
+
+	// Inject a default system prompt when no explicit one is provided.
+	hasSystem := false
+	for _, msg := range messages {
+		if strings.EqualFold(strings.TrimSpace(msg.Role), "system") {
+			hasSystem = true
+			break
+		}
+	}
+	if !hasSystem {
+		sb.WriteString("System: ")
+		sb.WriteString(defaultSystemPrompt)
+		sb.WriteString("<|eot_id|>\n")
+	}
+
 	for _, msg := range messages {
 		role := strings.TrimSpace(msg.Role)
 		if role == "" {
@@ -117,7 +144,7 @@ func PromptFromMessages(messages []backend.Message) string {
 		}
 		sb.WriteString(": ")
 		sb.WriteString(strings.TrimSpace(msg.Content))
-		sb.WriteString("\n")
+		sb.WriteString("<|eot_id|>\n")
 	}
 	sb.WriteString("Assistant:")
 	return sb.String()

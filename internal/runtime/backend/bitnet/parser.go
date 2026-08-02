@@ -9,6 +9,8 @@ import (
 var (
 	promptStatsRegex = regexp.MustCompile(`\[\s*Prompt:\s*[\d\.]+\s*t/s\s*\|\s*Generation:\s*[\d\.]+\s*t/s\s*\]`)
 	specialTokens    = []string{"<|begin_of_text|>", "<|end_of_text|>", "<|eot_id|>", "<s>", "</s>"}
+	// eotToken signals the model has finished its assistant turn.
+	eotToken = "<|eot_id|>"
 )
 
 // StreamFilter filters out backend runtime banners, metadata, prompt echoes, and trailing stats.
@@ -32,6 +34,18 @@ func (f *StreamFilter) Filter(text string) string {
 	}
 
 	cleaned := strings.ReplaceAll(text, "\r\n", "\n")
+
+	// If the model emits the end-of-turn token, stop the stream.
+	if strings.Contains(cleaned, eotToken) {
+		// Emit any text before the token, then end.
+		before, _, _ := strings.Cut(cleaned, eotToken)
+		f.ended = true
+		// Clean remaining special tokens from the prefix.
+		for _, tok := range specialTokens {
+			before = strings.ReplaceAll(before, tok, "")
+		}
+		return before
+	}
 
 	// If it contains prompt stats footer, mark as ended
 	if promptStatsRegex.MatchString(cleaned) {
