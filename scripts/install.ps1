@@ -3,95 +3,103 @@
 #   irm https://raw.githubusercontent.com/ShubhamRaz/bitcli/main/scripts/install.ps1 | iex
 #
 # Everything is installed into %USERPROFILE%\.bitcli\
-# To uninstall completely: Remove-Item -Recurse -Force "$HOME\.bitcli"
+# To uninstall: Remove-Item -Recurse -Force "$HOME\.bitcli"
+
+# NOTE: This script intentionally avoids `exit` because when run via `irm | iex`
+# `exit` closes the entire PowerShell window. We use `throw` instead, which shows
+# a red error but keeps the shell open.
 
 $ProgressPreference = "SilentlyContinue"
 
-# ── Config ──────────────────────────────────────────────────────────────────
-$BITCLI_VERSION = "latest"
-$BITCLI_HOME    = if ($env:BITCLI_HOME) { $env:BITCLI_HOME } else { Join-Path $HOME ".bitcli" }
-$BITCLI_BIN     = Join-Path $BITCLI_HOME "bin"
-$BINARY         = Join-Path $BITCLI_BIN "bitcli.exe"
-$GITHUB_REPO    = "ShubhamRaz/bitcli"
+# ── Config ───────────────────────────────────────────────────────────────────
+$BITCLI_HOME = if ($env:BITCLI_HOME) { $env:BITCLI_HOME } else { Join-Path $HOME ".bitcli" }
+$BITCLI_BIN  = Join-Path $BITCLI_HOME "bin"
+$BINARY      = Join-Path $BITCLI_BIN "bitcli.exe"
+$GITHUB_REPO = "ShubhamRaz/bitcli"
 
 function Write-Step([string]$msg) {
     Write-Host ""
     Write-Host "  ==> $msg" -ForegroundColor Cyan
 }
-function Write-Ok([string]$msg)   { Write-Host "  v  $msg" -ForegroundColor Green }
-function Write-Warn([string]$msg) { Write-Host "  !  $msg" -ForegroundColor Yellow }
+function Write-Ok([string]$msg) {
+    Write-Host "  [OK] $msg" -ForegroundColor Green
+}
+function Write-Warn([string]$msg) {
+    Write-Host "  [!]  $msg" -ForegroundColor Yellow
+}
 function Abort([string]$msg) {
     Write-Host ""
     Write-Host "  ERROR: $msg" -ForegroundColor Red
     Write-Host ""
-    exit 1
+    # Use throw instead of exit so the PowerShell window stays open.
+    throw "BitCLI install failed: $msg"
 }
 
-# ── Invoke-Git: runs git and redirects stderr to a temp file ─────────────────
-# Avoids PowerShell NativeCommandError which fires on any git stderr output.
-function Invoke-Git {
-    param([string[]]$Arguments, [string]$WorkDir = $PWD)
+# ── Run git safely (Start-Process avoids NativeCommandError on git stderr) ────
+function Invoke-Git([string[]]$Arguments, [string]$WorkDir) {
+    if (-not $WorkDir) { $WorkDir = $PWD.Path }
     $errFile = [System.IO.Path]::GetTempFileName()
     try {
-        $proc = Start-Process -FilePath "git" `
+        $proc = Start-Process git `
             -ArgumentList $Arguments `
             -WorkingDirectory $WorkDir `
             -Wait -PassThru -NoNewWindow `
             -RedirectStandardError $errFile
         if ($proc.ExitCode -ne 0) {
-            $errText = Get-Content $errFile -Raw -ErrorAction SilentlyContinue
-            Abort "git $($Arguments[0]) failed (exit $($proc.ExitCode)): $errText"
+            $msg = (Get-Content $errFile -Raw -ErrorAction SilentlyContinue) -replace "`r`n", " "
+            Abort "git $($Arguments[0]) failed: $msg"
         }
     } finally {
         Remove-Item $errFile -ErrorAction SilentlyContinue
     }
 }
 
-# ── Banner ───────────────────────────────────────────────────────────────────
+# ── Banner ────────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "  BitCLI Installer" -ForegroundColor White
-Write-Host "  ─────────────────────────────────────────────────────────" -ForegroundColor DarkGray
-Write-Host "  Install directory: $BITCLI_HOME" -ForegroundColor DarkGray
-Write-Host "  Everything stays in this folder. To uninstall:" -ForegroundColor DarkGray
-Write-Host "    Remove-Item -Recurse -Force `"$BITCLI_HOME`"" -ForegroundColor DarkGray
+Write-Host "  -------------------------------------------------------" -ForegroundColor DarkGray
+Write-Host "  Install directory : $BITCLI_HOME" -ForegroundColor DarkGray
+Write-Host "  To uninstall      : Remove-Item -Recurse -Force `"$BITCLI_HOME`"" -ForegroundColor DarkGray
 Write-Host ""
 
-# ── Step 1: Create directory layout ─────────────────────────────────────────
-Write-Step "Creating BitCLI home at $BITCLI_HOME"
-New-Item -ItemType Directory -Force -Path $BITCLI_BIN | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $BITCLI_HOME "models") | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $BITCLI_HOME "tools") | Out-Null
-Write-Ok "Directory layout created"
+# ── Step 1: Create directory layout ──────────────────────────────────────────
+Write-Step "Creating BitCLI home"
+New-Item -ItemType Directory -Force -Path $BITCLI_BIN                        | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $BITCLI_HOME "models")  | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $BITCLI_HOME "tools")   | Out-Null
+Write-Ok "Created $BITCLI_HOME"
 
-# ── Step 2: Check git ────────────────────────────────────────────────────────
+# ── Step 2: Check git ─────────────────────────────────────────────────────────
 Write-Step "Checking for git"
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-    Abort "git is not installed.`n  Install from https://git-scm.com/download/win then re-run."
+    Abort "git is not installed.`n  Install from: https://git-scm.com/download/win`n  Then re-run this installer."
 }
-Write-Ok "git found at $(Get-Command git | Select-Object -ExpandProperty Source)"
+Write-Ok "git found"
 
-# ── Step 3: Get bitcli.exe ───────────────────────────────────────────────────
+# ── Step 3: Get bitcli.exe ────────────────────────────────────────────────────
 Write-Step "Installing BitCLI binary"
 
 $arch      = if ([System.Environment]::Is64BitOperatingSystem) { "x86_64" } else { "x86" }
 $assetName = "bitcli-windows-$arch.exe"
 $gotBinary = $false
 
-# Try GitHub Releases first.
+# Try GitHub Releases.
 try {
-    $apiUrl  = "https://api.github.com/repos/$GITHUB_REPO/releases/latest"
-    $release = Invoke-RestMethod -Uri $apiUrl -Headers @{ "User-Agent" = "bitcli-installer/1.0" } -ErrorAction Stop
-    $asset   = $release.assets | Where-Object { $_.name -eq $assetName } | Select-Object -First 1
+    $release = Invoke-RestMethod `
+        -Uri "https://api.github.com/repos/$GITHUB_REPO/releases/latest" `
+        -Headers @{ "User-Agent" = "bitcli-installer/1.0" } `
+        -ErrorAction Stop
+    $asset = $release.assets | Where-Object { $_.name -eq $assetName } | Select-Object -First 1
     if ($asset) {
-        Write-Host "  Downloading release $($release.tag_name) ..."
+        Write-Host "  Downloading $($release.tag_name) ..."
         Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $BINARY -UseBasicParsing -ErrorAction Stop
-        Write-Ok "bitcli.exe downloaded to $BINARY"
+        Write-Ok "Downloaded bitcli.exe"
         $gotBinary = $true
     } else {
-        Write-Warn "Release $($release.tag_name) found but no Windows binary yet."
+        Write-Warn "Release $($release.tag_name) exists but no Windows binary attached yet."
     }
 } catch {
-    Write-Warn "No GitHub release available. Will build from source."
+    Write-Warn "No GitHub release found. Will build from source."
 }
 
 # Build from source fallback.
@@ -101,53 +109,55 @@ if (-not $gotBinary) {
     }
 
     $tmpSrc = Join-Path $env:TEMP "bitcli-src-$(Get-Random)"
-    Write-Host "  Cloning repository (shallow) ..."
-
+    Write-Host "  Cloning repository ..."
     Invoke-Git -Arguments @("clone", "--depth=1", "https://github.com/$GITHUB_REPO.git", $tmpSrc)
 
-    Write-Host "  Building binary (~30s) ..."
-    $buildErrFile = [System.IO.Path]::GetTempFileName()
+    Write-Host "  Building binary (~30 seconds) ..."
+    $errFile = [System.IO.Path]::GetTempFileName()
     try {
-        $proc = Start-Process -FilePath "go" `
+        $proc = Start-Process go `
             -ArgumentList @("build", "-buildvcs=false", "-o", $BINARY, "./cmd/bitcli") `
             -WorkingDirectory $tmpSrc `
             -Wait -PassThru -NoNewWindow `
-            -RedirectStandardError $buildErrFile
+            -RedirectStandardError $errFile
         if ($proc.ExitCode -ne 0) {
-            $errText = Get-Content $buildErrFile -Raw -ErrorAction SilentlyContinue
-            Abort "go build failed (exit $($proc.ExitCode)):`n$errText"
+            $msg = (Get-Content $errFile -Raw -ErrorAction SilentlyContinue)
+            Abort "go build failed:`n$msg"
         }
     } finally {
-        Remove-Item $buildErrFile -ErrorAction SilentlyContinue
+        Remove-Item $errFile -ErrorAction SilentlyContinue
         Remove-Item -Recurse -Force $tmpSrc -ErrorAction SilentlyContinue
     }
-    Write-Ok "bitcli.exe built and installed at $BINARY"
+    Write-Ok "Built bitcli.exe from source"
 }
 
-# ── Step 4: Add to PATH for this session ─────────────────────────────────────
-Write-Step "Configuring PATH for this session"
+# ── Step 4: Activate PATH ─────────────────────────────────────────────────────
+Write-Step "Updating PATH for this session"
 $env:PATH = "$BITCLI_BIN;$env:PATH"
-Write-Ok "PATH updated for current session"
+Write-Ok "PATH updated (current session only)"
 
-# ── Step 5: Run bitcli setup ─────────────────────────────────────────────────
+# ── Step 5: Run bitcli setup ──────────────────────────────────────────────────
 Write-Step "Running bitcli setup"
-Write-Host "  This installs cmake, clang, uv, and the BitNet backend." -ForegroundColor DarkGray
-Write-Host "  May take several minutes on first run." -ForegroundColor DarkGray
+Write-Host "  Installs cmake, clang, uv, and clones the BitNet backend." -ForegroundColor DarkGray
+Write-Host "  This may take several minutes on first run." -ForegroundColor DarkGray
 Write-Host ""
 & $BINARY setup
 if ($LASTEXITCODE -ne 0) {
-    Write-Host ""
-    Write-Warn "bitcli setup exited with code $LASTEXITCODE — run  bitcli setup  to retry."
+    Write-Warn "bitcli setup exited $LASTEXITCODE. Run  bitcli setup  to retry."
 }
 
-# ── Step 6: Done ─────────────────────────────────────────────────────────────
+# ── Done ──────────────────────────────────────────────────────────────────────
 Write-Host ""
-Write-Host "  ─────────────────────────────────────────────────────────" -ForegroundColor DarkGray
-Write-Host "  BitCLI is installed!" -ForegroundColor Green
+Write-Host "  -------------------------------------------------------" -ForegroundColor DarkGray
+Write-Host "  BitCLI installed!" -ForegroundColor Green
 Write-Host ""
-Write-Host "  For future sessions, add this to your PowerShell profile:" -ForegroundColor White
+Write-Host "  Quick start:" -ForegroundColor White
+Write-Host "    bitcli doctor" -ForegroundColor Yellow
+Write-Host "    bitcli pull microsoft/BitNet-b1.58-2B-4T" -ForegroundColor Yellow
+Write-Host "    bitcli run --prompt `"Hello!`"" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "  Permanent PATH — add to PowerShell profile (notepad `$PROFILE):" -ForegroundColor White
 Write-Host "    . `"$BITCLI_HOME\env.ps1`"" -ForegroundColor Yellow
 Write-Host ""
-Write-Host "  Open your profile with:  notepad `$PROFILE" -ForegroundColor DarkGray
-Write-Host "  Uninstall with:  Remove-Item -Recurse -Force `"$BITCLI_HOME`"" -ForegroundColor DarkGray
+Write-Host "  Uninstall: Remove-Item -Recurse -Force `"$BITCLI_HOME`"" -ForegroundColor DarkGray
 Write-Host ""
