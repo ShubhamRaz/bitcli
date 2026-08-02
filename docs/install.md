@@ -6,8 +6,9 @@ BitCLI uses a fully self-contained install model — everything lives inside a s
 
 ## Requirements
 
-- **Git** — required to clone the Microsoft BitNet backend
-- **Internet access** — for downloading models and tools
+- **Git** — required to clone the source and the Microsoft BitNet backend
+- **Go** — required to build from source (https://go.dev/dl/)
+- **Internet access** — for cloning, downloading models and tools
 - **Windows 10/11** or **Linux** or **macOS**
 
 ---
@@ -27,8 +28,8 @@ curl -fsSL https://raw.githubusercontent.com/ShubhamRaz/bitcli/main/scripts/inst
 ```
 
 Both installers:
-1. Create `~/.bitcli/` with the full directory layout
-2. Download the `bitcli` binary into `~/.bitcli/bin/`
+1. Clone the BitCLI source and build it with `go build`
+2. Install the binary into `~/.bitcli/bin/`
 3. Run `bitcli setup` which installs cmake, clang, and uv into `~/.bitcli/tools/`
 4. Clone the official Microsoft BitNet backend into `~/.bitcli/backends/bitnet/current/`
 5. Write `env.ps1` / `env.sh` activation scripts
