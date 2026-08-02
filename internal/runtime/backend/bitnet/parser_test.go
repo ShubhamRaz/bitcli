@@ -75,3 +75,38 @@ func TestStreamFilterStopsAtEotID(t *testing.T) {
 		t.Fatalf("expected empty after eot_id, got %q", res3)
 	}
 }
+
+func TestStreamFilterStripsMultiTurnChatEcho(t *testing.T) {
+	chatPrompt := "<|begin_of_text|>System: You are a helpful, concise, and friendly AI assistant. Answer the user's questions clearly and accurately.<|eot_id|>\nUser: hello\nAssistant:"
+	filter := NewStreamFilter(chatPrompt)
+
+	inputs := []string{
+		"Loading model...\n",
+		"\n",
+		"build      : b9918-390c30775\n",
+		"model      : C:\\models\\ggml-model-i2_s.gguf\n",
+		"available commands:\n",
+		"  /exit or Ctrl+C     stop or exit\n",
+		"\n",
+		"> <|begin_of_text|>System: You are a helpful, concise, and friendly AI assistant. Answer the user's questions clearly and accurately.<|eot_id|>\n",
+		"User: hello<|eot_id|>\n",
+		"Assistant:\n",
+		"\n",
+		"Hello! How can I help you today?\n",
+		"Exiting...\n",
+	}
+
+	var output string
+	for _, in := range inputs {
+		res := filter.Filter(in)
+		if res != "" {
+			output += res
+		}
+	}
+
+	expected := "Hello! How can I help you today?\n"
+	if output != expected {
+		t.Fatalf("expected:\n%q\ngot:\n%q", expected, output)
+	}
+}
+

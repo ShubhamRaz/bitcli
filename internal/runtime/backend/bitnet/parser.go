@@ -8,22 +8,47 @@ import (
 
 var (
 	promptStatsRegex = regexp.MustCompile(`\[\s*Prompt:\s*[\d\.]+\s*t/s\s*\|\s*Generation:\s*[\d\.]+\s*t/s\s*\]`)
-	specialTokens    = []string{"<|begin_of_text|>", "<|end_of_text|>", "<|eot_id|>", "<s>", "</s>"}
+	specialTokens    = []string{
+		"<|begin_of_text|>",
+		"<|end_of_text|>",
+		"<|eot_id|>",
+		"<|start_header_id|>",
+		"<|end_header_id|>",
+		"<s>",
+		"</s>",
+	}
 	// eotToken signals the model has finished its assistant turn.
 	eotToken = "<|eot_id|>"
 )
 
 // StreamFilter filters out backend runtime banners, metadata, prompt echoes, and trailing stats.
 type StreamFilter struct {
-	prompt  string
-	started bool
-	ended   bool
+	promptLines map[string]bool
+	started     bool
+	ended       bool
+}
+
+func normalizeLine(s string) string {
+	s = strings.TrimSpace(s)
+	for _, tok := range specialTokens {
+		s = strings.ReplaceAll(s, tok, "")
+	}
+	s = strings.TrimPrefix(s, "> ")
+	s = strings.TrimPrefix(s, ">")
+	return strings.TrimSpace(s)
 }
 
 // NewStreamFilter creates a stream filter for the given prompt.
 func NewStreamFilter(prompt string) *StreamFilter {
+	lines := make(map[string]bool)
+	for _, line := range strings.Split(prompt, "\n") {
+		norm := normalizeLine(line)
+		if norm != "" {
+			lines[norm] = true
+		}
+	}
 	return &StreamFilter{
-		prompt: strings.TrimSpace(prompt),
+		promptLines: lines,
 	}
 }
 
@@ -34,33 +59,13 @@ func (f *StreamFilter) Filter(text string) string {
 	}
 
 	cleaned := strings.ReplaceAll(text, "\r\n", "\n")
-
-	// If the model emits the end-of-turn token, stop the stream.
-	if strings.Contains(cleaned, eotToken) {
-		// Emit any text before the token, then end.
-		before, _, _ := strings.Cut(cleaned, eotToken)
-		f.ended = true
-		// Clean remaining special tokens from the prefix.
-		for _, tok := range specialTokens {
-			before = strings.ReplaceAll(before, tok, "")
-		}
-		return before
-	}
-
-	// If it contains prompt stats footer, mark as ended
-	if promptStatsRegex.MatchString(cleaned) {
-		f.ended = true
-		return ""
-	}
-
 	trimmed := strings.TrimSpace(cleaned)
 
-	// Check if this line is header/banner noise
+	// Check if this line is header/banner/prompt-echo noise
 	if !f.started {
 		if f.isHeaderNoise(trimmed) {
 			return ""
 		}
-		// Check for prompt echo
 		if f.isPromptEcho(trimmed) {
 			return ""
 		}
@@ -70,8 +75,18 @@ func (f *StreamFilter) Filter(text string) string {
 		f.started = true
 	}
 
-	// Check for trailer/footer noise
-	if f.isFooterNoise(trimmed) {
+	// Once streaming has started, check for end-of-turn token
+	if strings.Contains(cleaned, eotToken) {
+		before, _, _ := strings.Cut(cleaned, eotToken)
+		f.ended = true
+		for _, tok := range specialTokens {
+			before = strings.ReplaceAll(before, tok, "")
+		}
+		return before
+	}
+
+	// Check for trailer/footer noise or timing stats
+	if f.isFooterNoise(trimmed) || promptStatsRegex.MatchString(cleaned) {
 		f.ended = true
 		return ""
 	}
@@ -136,23 +151,32 @@ func (f *StreamFilter) isHeaderNoise(trimmed string) bool {
 }
 
 func (f *StreamFilter) isPromptEcho(trimmed string) bool {
-	if trimmed == ">" {
+	if trimmed == ">" || trimmed == "> " {
+		return true
+	}
+	norm := normalizeLine(trimmed)
+	if norm == "" {
+		return true
+	}
+	if f.promptLines != nil && f.promptLines[norm] {
+		return true
+	}
+	// Common prompt turn labels echoed by llama-cli
+	if norm == "Assistant:" || norm == "Assistant" ||
+		norm == "User:" || norm == "User" ||
+		norm == "Human:" || norm == "Human" ||
+		norm == "System:" || norm == "System" ||
+		norm == "BITNETAssistant:" || norm == "BITNETAssistant" {
 		return true
 	}
 	if strings.HasPrefix(trimmed, "> ") {
-		return true
-	}
-	if trimmed == "Assistant:" || trimmed == "User:" {
 		return true
 	}
 	return false
 }
 
 func (f *StreamFilter) isFooterNoise(trimmed string) bool {
-	if trimmed == "Exiting..." || trimmed == "Exiting" {
-		return true
-	}
-	if trimmed == ">" {
+	if trimmed == "Exiting..." || trimmed == "Exiting" || trimmed == ">" || trimmed == "> " {
 		return true
 	}
 	if strings.HasPrefix(trimmed, "main: decoded") || strings.HasPrefix(trimmed, "llama_perf_") {

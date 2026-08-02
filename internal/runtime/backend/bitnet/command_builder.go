@@ -140,6 +140,16 @@ func (b Builder) GenerateCommand(m model.Model, req backend.GenerateRequest, con
 	args := []string{
 		"-m", m.Path,
 		"-p", req.Prompt,
+		"-st",
+		"--no-warmup",
+		"--no-show-timings",
+		"--simple-io",
+		"--repeat-penalty", "1.15",
+		"--repeat-last-n", "64",
+		"-r", "<|eot_id|>",
+		"-r", "<|end_of_text|>",
+		"-r", "User:",
+		"-r", "Human:",
 	}
 	if req.Options.MaxTokens > 0 {
 		args = append(args, "-n", fmt.Sprintf("%d", req.Options.MaxTokens))

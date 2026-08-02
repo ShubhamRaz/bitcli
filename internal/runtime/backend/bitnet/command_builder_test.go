@@ -42,6 +42,12 @@ func TestGenerateCommandDirectLlamaCLI(t *testing.T) {
 	if !strings.Contains(argsStr, "-cnv") {
 		t.Fatalf("expected -cnv in args, got %s", argsStr)
 	}
+	if !strings.Contains(argsStr, "-st") {
+		t.Fatalf("expected -st in args, got %s", argsStr)
+	}
+	if !strings.Contains(argsStr, "--repeat-penalty") {
+		t.Fatalf("expected --repeat-penalty in args, got %s", argsStr)
+	}
 }
 
 func TestBuildCommands(t *testing.T) {
