@@ -172,6 +172,9 @@ func (b Builder) GenerateCommand(m model.Model, req backend.GenerateRequest, con
 		"--simple-io",
 		"--repeat-penalty", "1.2",
 		"--repeat-last-n", "64",
+		"--chat-template", "{% for message in messages %}{% if loop.first %}{{ bos_token }}{% endif %}{% if message['role'] == 'system' %}{{ 'System: ' + message['content'] + '\\n' }}{% elif message['role'] == 'user' %}{{ 'User: ' + message['content'] + '\\nAssistant: ' }}{% elif message['role'] == 'assistant' %}{{ message['content'] + eos_token }}{% endif %}{% endfor %}",
+		"-r", "\\nUser:",
+		"-r", "\\n##",
 	}
 	if req.Options.MaxTokens > 0 {
 		args = append(args, "-n", fmt.Sprintf("%d", req.Options.MaxTokens))

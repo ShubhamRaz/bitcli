@@ -28,7 +28,7 @@ func DefaultConfig() Config {
 				InstallMode: "auto",
 				Path:        "",
 				RepoURL:     "https://github.com/microsoft/BitNet.git",
-				Revision:    "",
+				Revision:    "pr/605",
 				Python:      "",
 				QuantType:   "i2_s",
 			},

@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/bitcli/bitcli/internal/process"
 )
@@ -30,6 +31,17 @@ func (i Installer) CheckoutRevision(ctx context.Context, target, revision string
 	if revision == "" {
 		return nil
 	}
+	
+	// Support checking out GitHub Pull Requests directly (e.g. "pr/605")
+	if strings.HasPrefix(revision, "pr/") {
+		prNum := strings.TrimPrefix(revision, "pr/")
+		branchName := "pr" + prNum
+		if err := i.Runner.RunWait(ctx, target, "git", "fetch", "origin", "pull/"+prNum+"/head:"+branchName); err != nil {
+			return err
+		}
+		return i.Runner.RunWait(ctx, target, "git", "checkout", branchName)
+	}
+
 	if err := i.Runner.RunWait(ctx, target, "git", "fetch", "--all", "--tags"); err != nil {
 		return err
 	}
