@@ -157,7 +157,6 @@ func (b Builder) GenerateCommand(m model.Model, req backend.GenerateRequest, con
 		"--no-display-prompt",
 		"--repeat-penalty", "1.25",
 		"--repeat-last-n", "64",
-		"--penalize-nl",
 		"-r", "<|eot_id|>",
 		"-r", "<|end_of_text|>",
 		"-r", "<|start_header_id|>",

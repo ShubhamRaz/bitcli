@@ -48,9 +48,6 @@ func TestGenerateCommandDirectLlamaCLI(t *testing.T) {
 	if !strings.Contains(argsStr, "--repeat-penalty") {
 		t.Fatalf("expected --repeat-penalty in args, got %s", argsStr)
 	}
-	if !strings.Contains(argsStr, "--penalize-nl") {
-		t.Fatalf("expected --penalize-nl in args, got %s", argsStr)
-	}
 	if !strings.Contains(argsStr, "--no-display-prompt") {
 		t.Fatalf("expected --no-display-prompt in args, got %s", argsStr)
 	}
