@@ -33,12 +33,12 @@ func newListCommand(opts *rootOptions) *cobra.Command {
 			}
 
 			fmt.Fprintln(out)
-			fmt.Fprintln(out, "  ╔═══════════════════════════════════════════════════════════════════════════════════╗")
-			fmt.Fprintln(out, "  ║                                Installed BitNet Models                            ║")
-			fmt.Fprintln(out, "  ╚═══════════════════════════════════════════════════════════════════════════════════╝")
+			fmt.Fprintln(out, "  +---------------------------------------------------------------------------------+")
+			fmt.Fprintln(out, "  |                                Installed BitNet Models                            |")
+			fmt.Fprintln(out, "  +---------------------------------------------------------------------------------+")
 			fmt.Fprintln(out)
 			fmt.Fprintf(out, "    %-34s %-8s %-10s %-16s\n", "MODEL NAME", "QUANT", "SIZE", "BACKEND")
-			fmt.Fprintln(out, "    ───────────────────────────────────────────────────────────────────────────────")
+			fmt.Fprintln(out, "    -------------------------------------------------------------------------------")
 			for _, m := range models {
 				sizeStr := "-"
 				if fi, err := os.Stat(m.Path); err == nil {
@@ -59,7 +59,7 @@ func newListCommand(opts *rootOptions) *cobra.Command {
 				}
 				fmt.Fprintf(out, "    %-34s %-8s %-10s %-16s\n", m.UserID, quant, sizeStr, backendName)
 			}
-			fmt.Fprintln(out, "    ───────────────────────────────────────────────────────────────────────────────")
+			fmt.Fprintln(out, "    -------------------------------------------------------------------------------")
 			fmt.Fprintln(out)
 			fmt.Fprintln(out, "  Usage Tips:")
 			fmt.Fprintln(out, "    Run a prompt : bitcli run <model> -p \"Your prompt\"")

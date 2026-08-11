@@ -33,9 +33,9 @@ func newDoctorCommand(opts *rootOptions) *cobra.Command {
 
 			// ── Header ─────────────────────────────────────────────────────
 			fmt.Fprintln(out)
-			fmt.Fprintln(out, "  ╔══════════════════════════════════════════════════════╗")
-			fmt.Fprintln(out, "  ║              BitCLI System Diagnostics               ║")
-			fmt.Fprintln(out, "  ╚══════════════════════════════════════════════════════╝")
+			fmt.Fprintln(out, "  +------------------------------------------------------+")
+			fmt.Fprintln(out, "  |              BitCLI System Diagnostics               |")
+			fmt.Fprintln(out, "  +------------------------------------------------------+")
 			fmt.Fprintln(out)
 
 			// ── Configuration ──────────────────────────────────────────────
@@ -121,20 +121,20 @@ func newDoctorCommand(opts *rootOptions) *cobra.Command {
 			if len(report.Warnings) > 0 {
 				printSection(out, "Warnings")
 				for _, w := range report.Warnings {
-					fmt.Fprintf(out, "    ⚠  %s\n", w)
+					fmt.Fprintf(out, "    !  %s\n", w)
 				}
 				fmt.Fprintln(out)
 			}
 
 			// ── Cache ──────────────────────────────────────────────────────
 			if err := a.cache.Ensure(); err != nil {
-				fmt.Fprintf(out, "    ✗  Model cache error: %v\n\n", err)
+				fmt.Fprintf(out, "    X  Model cache error: %v\n\n", err)
 			}
 
 			// ── Overall Status ─────────────────────────────────────────────
 			if _, err := os.Stat(a.paths.ConfigFile); err == nil {
-				fmt.Fprintln(out, "  ──────────────────────────────────────────────────────")
-				fmt.Fprintln(out, "  ✓  System check complete — configuration OK")
+				fmt.Fprintln(out, "  ------------------------------------------------------")
+				fmt.Fprintln(out, "  OK System check complete - configuration OK")
 				fmt.Fprintln(out)
 			}
 
@@ -146,7 +146,7 @@ func newDoctorCommand(opts *rootOptions) *cobra.Command {
 // ── Display Helpers ─────────────────────────────────────────────────────────
 
 func printSection(out io.Writer, title string) {
-	fmt.Fprintf(out, "  ── %s ──\n", title)
+	fmt.Fprintf(out, "  -- %s --\n", title)
 }
 
 func printRow(out io.Writer, label, value string) {
@@ -154,23 +154,23 @@ func printRow(out io.Writer, label, value string) {
 }
 
 func printStatus(out io.Writer, label string, ok bool, detail string) {
-	icon := "✓"
+	icon := "OK"
 	if !ok {
-		icon = "✗"
+		icon = "X "
 	}
 	fmt.Fprintf(out, "    %s  %-14s %s\n", icon, label, detail)
 }
 
 func printFeature(out io.Writer, label string, supported bool) {
 	if supported {
-		fmt.Fprintf(out, "    ✓  %-18s supported\n", label)
+		fmt.Fprintf(out, "    OK %-18s supported\n", label)
 	} else {
-		fmt.Fprintf(out, "    ·  %-18s not detected\n", label)
+		fmt.Fprintf(out, "    -  %-18s not detected\n", label)
 	}
 }
 
 func printHint(out io.Writer, hint string) {
-	fmt.Fprintf(out, "       → %s\n", hint)
+	fmt.Fprintf(out, "       -> %s\n", hint)
 }
 
 func checkToolFancy(out io.Writer, display, name string, candidateDirs ...string) {

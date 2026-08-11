@@ -13,6 +13,16 @@ import (
 	"github.com/bitcli/bitcli/internal/runtime/backend"
 )
 
+const baseModelFewShotPrefix = `The following is a conversation between a User and a helpful, intelligent Assistant.
+
+User: What is the capital of France?
+Assistant: The capital of France is Paris.
+<|eot_id|>
+User: Who wrote Hamlet?
+Assistant: Hamlet was written by William Shakespeare.
+<|eot_id|>
+`
+
 // Command describes an external process invocation without shell interpolation.
 type Command struct {
 	Dir   string
@@ -135,46 +145,23 @@ func (b Builder) CMakeBuildCommand() Command {
 	}
 }
 
-// defaultSystemPrompt provides instruction grounding for small models that
-// otherwise produce free-form text completions instead of answering questions.
-const defaultSystemPrompt = "You are a helpful assistant."
-
-// GenerateCommand builds a llama-cli invocation using native conversation mode.
-// The BitNet llama-cli auto-enables -cnv when the model has a chat template.
-// In conversation mode:
-//   - "-sys" sets the system prompt (applied via the model's jinja chat template)
-//   - "-p" sets the user message (first conversational turn)
-//   - "-st" makes it single-turn (process one exchange and exit)
+// GenerateCommand builds a llama-cli invocation.
+// It formats the prompt as a one-shot BitNet prompt if it hasn't been formatted already.
 func (b Builder) GenerateCommand(m model.Model, req backend.GenerateRequest, conversation bool) Command {
-	userMessage := strings.TrimSpace(req.Prompt)
-	systemPrompt := defaultSystemPrompt
+	prompt := req.Prompt
 
-	// If the prompt was pre-formatted with chat template tokens (from Chat flow),
-	// extract the components. Otherwise use the raw prompt as the user message.
-	if strings.Contains(req.Prompt, "<|begin_of_text|>") || strings.Contains(req.Prompt, "<|start_header_id|>") {
-		// Pre-formatted prompt from PromptFromMessages — extract system + user parts
-		sys, user := extractFromChatTemplate(req.Prompt)
-		if sys != "" {
-			systemPrompt = sys
-		}
-		if user != "" {
-			userMessage = user
-		}
+	// If prompt is not already formatted with BitNet's chat template, wrap it for one-shot.
+	if !strings.Contains(prompt, "<|eot_id|>") {
+		prompt = fmt.Sprintf("%sUser: %s<|eot_id|>Assistant: ", baseModelFewShotPrefix, strings.TrimSpace(prompt))
 	}
 
 	args := []string{
 		"-m", m.Path,
-		"-sys", systemPrompt,
-		"-p", userMessage,
-		"-cnv",
-		"-st",
+		"-p", prompt,
 		"--no-warmup",
 		"--simple-io",
 		"--repeat-penalty", "1.2",
 		"--repeat-last-n", "64",
-		"--chat-template", "{% for message in messages %}{% if loop.first %}{{ bos_token }}{% endif %}{% if message['role'] == 'system' %}{{ 'System: ' + message['content'] + '\\n' }}{% elif message['role'] == 'user' %}{{ 'User: ' + message['content'] + '\\nAssistant: ' }}{% elif message['role'] == 'assistant' %}{{ message['content'] + eos_token }}{% endif %}{% endfor %}",
-		"-r", "\\nUser:",
-		"-r", "\\n##",
 	}
 	if req.Options.MaxTokens > 0 {
 		args = append(args, "-n", fmt.Sprintf("%d", req.Options.MaxTokens))
@@ -207,54 +194,14 @@ func (b Builder) GenerateCommand(m model.Model, req backend.GenerateRequest, con
 	return Command{Dir: b.BackendDir(), Name: b.LlamaCLIPath(), Args: args}
 }
 
-// extractFromChatTemplate parses a pre-formatted LLaMA-3 chat template prompt
-// to extract the system prompt and the last user message.
-func extractFromChatTemplate(prompt string) (system, user string) {
-	// Extract system message
-	const sysHeader = "<|start_header_id|>system<|end_header_id|>\n\n"
-	if idx := strings.Index(prompt, sysHeader); idx >= 0 {
-		rest := prompt[idx+len(sysHeader):]
-		if eot := strings.Index(rest, "<|eot_id|>"); eot >= 0 {
-			system = strings.TrimSpace(rest[:eot])
-		}
-	}
-	// Extract last user message
-	const userHeader = "<|start_header_id|>user<|end_header_id|>\n\n"
-	lastUserIdx := strings.LastIndex(prompt, userHeader)
-	if lastUserIdx >= 0 {
-		rest := prompt[lastUserIdx+len(userHeader):]
-		if eot := strings.Index(rest, "<|eot_id|>"); eot >= 0 {
-			user = strings.TrimSpace(rest[:eot])
-		}
-	}
-	return
-}
-
-// PromptFromMessages converts a chat transcript into the standard LLaMA-3 instruction chat template:
+// PromptFromMessages converts a chat transcript into the BitNet HF instruction chat template:
 //
-//	<|begin_of_text|><|start_header_id|>system<|end_header_id|>
-//	{system_prompt}<|eot_id|><|start_header_id|>user<|end_header_id|>
-//	{msg}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
-//	{reply}<|eot_id|>...
-//	<|start_header_id|>assistant<|end_header_id|>
-//
-// If no system message is present in the conversation, a default one is injected
-// to provide instruction grounding for small models.
+//	User: {msg}<|eot_id|>Assistant: {reply}<|eot_id|>...
 func PromptFromMessages(messages []backend.Message) string {
 	var sb strings.Builder
-	sb.WriteString("<|begin_of_text|>")
 
-	// Check if any message has role "system"; if not, inject default system prompt.
-	hasSystem := false
-	for _, msg := range messages {
-		if strings.EqualFold(strings.TrimSpace(msg.Role), "system") {
-			hasSystem = true
-			break
-		}
-	}
-	if !hasSystem {
-		sb.WriteString(fmt.Sprintf("<|start_header_id|>system<|end_header_id|>\n\n%s<|eot_id|>", defaultSystemPrompt))
-	}
+	// Prepend the few-shot context so base models behave as assistants
+	sb.WriteString(baseModelFewShotPrefix)
 
 	for _, msg := range messages {
 		role := strings.ToLower(strings.TrimSpace(msg.Role))
@@ -265,8 +212,14 @@ func PromptFromMessages(messages []backend.Message) string {
 		if content == "" {
 			continue
 		}
-		sb.WriteString(fmt.Sprintf("<|start_header_id|>%s<|end_header_id|>\n\n%s<|eot_id|>", role, content))
+		if role == "system" {
+			sb.WriteString(fmt.Sprintf("System: %s<|eot_id|>", content))
+		} else if role == "user" {
+			sb.WriteString(fmt.Sprintf("User: %s<|eot_id|>", content))
+		} else if role == "assistant" {
+			sb.WriteString(fmt.Sprintf("Assistant: %s<|eot_id|>", content))
+		}
 	}
-	sb.WriteString("<|start_header_id|>assistant<|end_header_id|>\n\n")
+	sb.WriteString("Assistant: ")
 	return sb.String()
 }

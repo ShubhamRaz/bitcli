@@ -11,7 +11,7 @@ import (
 	"github.com/bitcli/bitcli/internal/runtime/backend"
 )
 
-func TestGenerateCommandConversationMode(t *testing.T) {
+func TestGenerateCommandFormatting(t *testing.T) {
 	cfg := config.DefaultConfig()
 	paths := config.Paths{BackendDir: filepath.Join("tmp", "backends")}
 	builder := NewBuilder(cfg, paths)
@@ -33,27 +33,15 @@ func TestGenerateCommandConversationMode(t *testing.T) {
 	}
 	argsStr := strings.Join(cmd.Args, " ")
 
-	// Must use -cnv and -st for conversation mode
-	if !strings.Contains(argsStr, "-cnv") {
-		t.Fatalf("expected -cnv in args, got %s", argsStr)
+	// Must NOT use -cnv and -st
+	if strings.Contains(argsStr, "-cnv") {
+		t.Fatalf("unexpected -cnv in args, got %s", argsStr)
 	}
-	if !strings.Contains(argsStr, "-st") {
-		t.Fatalf("expected -st in args, got %s", argsStr)
-	}
-
-	// -sys should be the system prompt
-	var sysArg string
-	for i, arg := range cmd.Args {
-		if arg == "-sys" && i+1 < len(cmd.Args) {
-			sysArg = cmd.Args[i+1]
-			break
-		}
-	}
-	if !strings.Contains(sysArg, "helpful assistant") {
-		t.Fatalf("expected system prompt in -sys, got %q", sysArg)
+	if strings.Contains(argsStr, "-st") {
+		t.Fatalf("unexpected -st in args, got %s", argsStr)
 	}
 
-	// -p should be the user message
+	// -p should be the user message formatted as one-shot
 	var pArg string
 	for i, arg := range cmd.Args {
 		if arg == "-p" && i+1 < len(cmd.Args) {
@@ -61,8 +49,9 @@ func TestGenerateCommandConversationMode(t *testing.T) {
 			break
 		}
 	}
-	if pArg != "hello" {
-		t.Fatalf("expected user message 'hello' in -p, got %q", pArg)
+	expectedPrompt := baseModelFewShotPrefix + "User: hello<|eot_id|>Assistant: "
+	if pArg != expectedPrompt {
+		t.Fatalf("expected user message %q in -p, got %q", expectedPrompt, pArg)
 	}
 
 	if !strings.Contains(argsStr, "-ngl 99") {
@@ -96,18 +85,9 @@ func TestBuildCommands(t *testing.T) {
 
 func TestPromptFromMessages(t *testing.T) {
 	prompt := PromptFromMessages([]backend.Message{{Role: "user", Content: "Hello"}})
-	// Should inject default system prompt when no system message present.
-	if !strings.Contains(prompt, "<|start_header_id|>system<|end_header_id|>") {
-		t.Fatalf("expected default system prompt, got: %q", prompt)
-	}
-	if !strings.Contains(prompt, defaultSystemPrompt) {
-		t.Fatalf("expected default system prompt content, got: %q", prompt)
-	}
-	if !strings.Contains(prompt, "Hello") {
-		t.Fatalf("expected user message in prompt, got: %q", prompt)
-	}
-	if !strings.HasSuffix(prompt, "<|start_header_id|>assistant<|end_header_id|>\n\n") {
-		t.Fatalf("expected assistant header at end, got: %q", prompt)
+	expected := baseModelFewShotPrefix + "User: Hello<|eot_id|>Assistant: "
+	if prompt != expected {
+		t.Fatalf("expected prompt:\n got: %q\nwant: %q", prompt, expected)
 	}
 }
 
@@ -116,14 +96,9 @@ func TestPromptFromMessagesWithSystemMessage(t *testing.T) {
 		{Role: "system", Content: "Be brief."},
 		{Role: "user", Content: "Hello"},
 	})
-	// Should NOT inject default system prompt when one is already present.
-	expected := "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nBe brief.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nHello<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+	expected := baseModelFewShotPrefix + "System: Be brief.<|eot_id|>User: Hello<|eot_id|>Assistant: "
 	if prompt != expected {
 		t.Fatalf("unexpected prompt:\n got: %q\nwant: %q", prompt, expected)
-	}
-	// Must not contain default system prompt
-	if strings.Contains(prompt, defaultSystemPrompt) {
-		t.Fatalf("should not inject default system prompt when custom system message exists")
 	}
 }
 
@@ -151,22 +126,10 @@ func TestGenerateCommandSysAndPromptSeparation(t *testing.T) {
 	builder := NewBuilder(cfg, paths)
 	m := model.Model{Path: filepath.Join("models", "ggml-model-i2_s.gguf")}
 	cmd := builder.GenerateCommand(m, backend.GenerateRequest{
-		Prompt: "What is the capital of France?",
+		Prompt: "User: What is the capital of France?<|eot_id|>Assistant: ",
 	}, false)
 
-	// -sys should be the system prompt
-	var sysArg string
-	for i, arg := range cmd.Args {
-		if arg == "-sys" && i+1 < len(cmd.Args) {
-			sysArg = cmd.Args[i+1]
-			break
-		}
-	}
-	if !strings.Contains(sysArg, "helpful assistant") {
-		t.Fatalf("-sys should contain system prompt, got %q", sysArg)
-	}
-
-	// -p should be the user message, NOT the system prompt
+	// -p should be exactly what was passed if it already contains <|eot_id|>
 	var pArg string
 	for i, arg := range cmd.Args {
 		if arg == "-p" && i+1 < len(cmd.Args) {
@@ -174,40 +137,7 @@ func TestGenerateCommandSysAndPromptSeparation(t *testing.T) {
 			break
 		}
 	}
-	if pArg != "What is the capital of France?" {
-		t.Fatalf("-p should contain user message, got %q", pArg)
-	}
-
-	// No Stdin needed since we use -p for user message
-	if len(cmd.Stdin) != 0 {
-		t.Fatalf("expected no Stdin data, got %q", string(cmd.Stdin))
-	}
-}
-
-func TestExtractFromChatTemplate(t *testing.T) {
-	template := "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nBe brief.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nHello there<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-	sys, user := extractFromChatTemplate(template)
-	if sys != "Be brief." {
-		t.Fatalf("expected system 'Be brief.', got %q", sys)
-	}
-	if user != "Hello there" {
-		t.Fatalf("expected user 'Hello there', got %q", user)
-	}
-}
-
-func TestExtractFromChatTemplateMultiTurn(t *testing.T) {
-	prompt := PromptFromMessages([]backend.Message{
-		{Role: "system", Content: "Be helpful."},
-		{Role: "user", Content: "Hi"},
-		{Role: "assistant", Content: "Hello!"},
-		{Role: "user", Content: "Tell me about dogs"},
-	})
-	sys, user := extractFromChatTemplate(prompt)
-	if sys != "Be helpful." {
-		t.Fatalf("expected system 'Be helpful.', got %q", sys)
-	}
-	// Should get the LAST user message
-	if user != "Tell me about dogs" {
-		t.Fatalf("expected last user message 'Tell me about dogs', got %q", user)
+	if pArg != "User: What is the capital of France?<|eot_id|>Assistant: " {
+		t.Fatalf("-p should contain exact user message, got %q", pArg)
 	}
 }
