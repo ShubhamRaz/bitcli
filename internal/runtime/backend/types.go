@@ -8,6 +8,7 @@ type Options struct {
 	Temperature   float64
 	TopP          float64
 	TopK          int
+	MinP          float64
 	Threads       int
 	GPULayers     int
 	ContextLength int

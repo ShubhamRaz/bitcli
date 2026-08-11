@@ -26,6 +26,7 @@ type RuntimeConfig struct {
 	Temperature   float64 `mapstructure:"temperature" yaml:"temperature"`
 	TopP          float64 `mapstructure:"top_p" yaml:"top_p"`
 	TopK          int     `mapstructure:"top_k" yaml:"top_k"`
+	MinP          float64 `mapstructure:"min_p" yaml:"min_p"`
 	Threads       int     `mapstructure:"threads" yaml:"threads"`
 	GPULayers     int     `mapstructure:"gpu_layers" yaml:"gpu_layers"`
 	ContextLength int     `mapstructure:"context_length" yaml:"context_length"`

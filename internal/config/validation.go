@@ -24,6 +24,9 @@ func Validate(cfg Config) error {
 	if cfg.Runtime.TopP < 0 || cfg.Runtime.TopP > 1 {
 		return utils.NewError(utils.CodeConfigInvalid, "top_p must be between 0 and 1")
 	}
+	if cfg.Runtime.MinP < 0 || cfg.Runtime.MinP > 1 {
+		return utils.NewError(utils.CodeConfigInvalid, "min_p must be between 0 and 1")
+	}
 	if cfg.Runtime.ContextLength <= 0 {
 		return utils.NewError(utils.CodeConfigInvalid, "context length must be positive")
 	}

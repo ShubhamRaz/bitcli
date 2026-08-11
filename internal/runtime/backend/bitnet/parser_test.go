@@ -110,3 +110,47 @@ func TestStreamFilterStripsMultiTurnChatEcho(t *testing.T) {
 	}
 }
 
+func TestStreamFilterQuestionFloodDetection(t *testing.T) {
+	filter := NewStreamFilter("test prompt")
+	filter.Filter("Loading model...\n")
+	filter.Filter("> test prompt\n")
+
+	// First response line is fine
+	res1 := filter.Filter("Here is some info.\n")
+	if res1 == "" {
+		t.Fatal("expected first line to pass")
+	}
+
+	// Three consecutive questions should trigger flood detection
+	filter.Filter("What do you think about this?\n")
+	filter.Filter("How does that relate to other things?\n")
+	res := filter.Filter("Why would anyone ask this question?\n")
+
+	if res != "" {
+		t.Fatal("expected question-flood detection to suppress third consecutive question")
+	}
+
+	// After flood detection, further output should be suppressed
+	resAfter := filter.Filter("More content should not appear\n")
+	if resAfter != "" {
+		t.Fatal("expected all output suppressed after flood detection")
+	}
+}
+
+func TestLongestCommonSubstringLen(t *testing.T) {
+	tests := []struct {
+		a, b string
+		min  int
+	}{
+		{"hello world", "hello world", 11},
+		{"abcdefghij", "xyz", 0},
+		{"the quick brown fox jumps over the lazy dog", "the slow brown fox jumps over the lazy cat", 30},
+	}
+	for _, tt := range tests {
+		got := longestCommonSubstringLen(tt.a, tt.b)
+		if got < tt.min {
+			t.Errorf("longestCommonSubstringLen(%q, %q) = %d, want >= %d", tt.a, tt.b, got, tt.min)
+		}
+	}
+}
+

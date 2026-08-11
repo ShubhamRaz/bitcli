@@ -134,13 +134,17 @@ func (b Builder) CMakeBuildCommand() Command {
 	}
 }
 
+// defaultSystemPrompt provides instruction grounding for small models that
+// otherwise produce free-form text completions instead of answering questions.
+const defaultSystemPrompt = "You are a helpful assistant. Provide clear, direct, and informative answers. Be concise and stay on topic. Do not ask unnecessary questions back to the user."
+
 // GenerateCommand builds a direct llama-cli invocation for text generation.
 // This bypasses run_inference.py for full control over flags and GPU support.
 func (b Builder) GenerateCommand(m model.Model, req backend.GenerateRequest, conversation bool) Command {
 	prompt := req.Prompt
-	// If not already formatted as a multi-turn chat template, wrap single prompt as a turn.
+	// If not already formatted as a multi-turn chat template, wrap single prompt with system prompt.
 	if !conversation && !strings.Contains(prompt, "<|begin_of_text|>") && !strings.Contains(prompt, "<|start_header_id|>") && !strings.Contains(prompt, "<|im_start|>") {
-		prompt = fmt.Sprintf("<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n%s<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n", strings.TrimSpace(prompt))
+		prompt = fmt.Sprintf("<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n%s<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n%s<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n", defaultSystemPrompt, strings.TrimSpace(prompt))
 	}
 
 	args := []string{
@@ -150,8 +154,10 @@ func (b Builder) GenerateCommand(m model.Model, req backend.GenerateRequest, con
 		"--no-warmup",
 		"--no-show-timings",
 		"--simple-io",
+		"--no-display-prompt",
 		"--repeat-penalty", "1.25",
-		"--repeat-last-n", "128",
+		"--repeat-last-n", "64",
+		"--penalize-nl",
 		"-r", "<|eot_id|>",
 		"-r", "<|end_of_text|>",
 		"-r", "<|start_header_id|>",
@@ -176,6 +182,9 @@ func (b Builder) GenerateCommand(m model.Model, req backend.GenerateRequest, con
 	if req.Options.TopK > 0 {
 		args = append(args, "--top-k", fmt.Sprintf("%d", req.Options.TopK))
 	}
+	if req.Options.MinP > 0 {
+		args = append(args, "--min-p", fmt.Sprintf("%.4f", req.Options.MinP))
+	}
 	// GPU layers: 0 = CPU only, >0 = offload layers to GPU
 	ngl := 0
 	if req.Options.GPULayers > 0 {
@@ -190,13 +199,29 @@ func (b Builder) GenerateCommand(m model.Model, req backend.GenerateRequest, con
 
 // PromptFromMessages converts a chat transcript into the standard LLaMA-3 instruction chat template:
 //
-//	<|begin_of_text|><|start_header_id|>user<|end_header_id|>
+//	<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+//	{system_prompt}<|eot_id|><|start_header_id|>user<|end_header_id|>
 //	{msg}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 //	{reply}<|eot_id|>...
 //	<|start_header_id|>assistant<|end_header_id|>
+//
+// If no system message is present in the conversation, a default one is injected
+// to provide instruction grounding for small models.
 func PromptFromMessages(messages []backend.Message) string {
 	var sb strings.Builder
 	sb.WriteString("<|begin_of_text|>")
+
+	// Check if any message has role "system"; if not, inject default system prompt.
+	hasSystem := false
+	for _, msg := range messages {
+		if strings.EqualFold(strings.TrimSpace(msg.Role), "system") {
+			hasSystem = true
+			break
+		}
+	}
+	if !hasSystem {
+		sb.WriteString(fmt.Sprintf("<|start_header_id|>system<|end_header_id|>\n\n%s<|eot_id|>", defaultSystemPrompt))
+	}
 
 	for _, msg := range messages {
 		role := strings.ToLower(strings.TrimSpace(msg.Role))

@@ -120,6 +120,7 @@ func runtimeOptions(cfg config.Config) bitruntime.Options {
 		Temperature:   cfg.Runtime.Temperature,
 		TopP:          cfg.Runtime.TopP,
 		TopK:          cfg.Runtime.TopK,
+		MinP:          cfg.Runtime.MinP,
 		Threads:       cfg.Runtime.Threads,
 		GPULayers:     gpuLayers,
 		ContextLength: cfg.Runtime.ContextLength,

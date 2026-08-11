@@ -77,6 +77,7 @@ func newRunCommand(opts *rootOptions) *cobra.Command {
 	cmd.Flags().Float64Var(&runtimeOpts.Temperature, "temperature", 0, "Sampling temperature")
 	cmd.Flags().Float64Var(&runtimeOpts.TopP, "top-p", 0, "Nucleus sampling value")
 	cmd.Flags().IntVar(&runtimeOpts.TopK, "top-k", 0, "Top-k sampling value")
+	cmd.Flags().Float64Var(&runtimeOpts.MinP, "min-p", 0, "Min-p sampling threshold (filters low-probability tokens)")
 	cmd.Flags().IntVarP(&runtimeOpts.Threads, "threads", "t", 0, "CPU threads")
 	cmd.Flags().IntVar(&runtimeOpts.GPULayers, "gpu-layers", 0, "GPU layers when supported by the backend")
 	cmd.Flags().IntVarP(&runtimeOpts.ContextLength, "context", "c", 0, "Context length")
@@ -168,6 +169,9 @@ func mergeOptions(base, override bitruntime.Options) bitruntime.Options {
 	}
 	if override.TopK != 0 {
 		base.TopK = override.TopK
+	}
+	if override.MinP != 0 {
+		base.MinP = override.MinP
 	}
 	if override.Threads != 0 {
 		base.Threads = override.Threads

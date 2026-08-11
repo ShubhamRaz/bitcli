@@ -16,10 +16,11 @@ func DefaultConfig() Config {
 			Temperature:   0.2,
 			TopP:          0.9,
 			TopK:          40,
+			MinP:          0.05,
 			Threads:       0,
 			GPULayers:     0,
 			ContextLength: 4096,
-			MaxTokens:     512,
+			MaxTokens:     256,
 			Device:        "cpu",
 		},
 		Backend: BackendConfig{

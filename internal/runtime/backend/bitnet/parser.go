@@ -23,11 +23,14 @@ var (
 
 // StreamFilter filters out backend runtime banners, metadata, prompt echoes, and trailing stats.
 type StreamFilter struct {
-	promptLines map[string]bool
-	seenLines   map[string]int
-	started     bool
-	firstToken  bool
-	ended       bool
+	promptLines     map[string]bool
+	seenLines       map[string]int
+	started         bool
+	firstToken      bool
+	ended           bool
+	totalEmitted    int
+	consecutiveQs   int      // consecutive lines ending with '?'
+	recentLines     []string // rolling window for similarity detection
 }
 
 func normalizeLine(s string) string {
@@ -53,6 +56,7 @@ func NewStreamFilter(prompt string) *StreamFilter {
 		promptLines: lines,
 		seenLines:   make(map[string]int),
 		firstToken:  true,
+		recentLines: make([]string, 0, 16),
 	}
 }
 
@@ -104,6 +108,31 @@ func (f *StreamFilter) Filter(text string) string {
 		}
 	}
 
+	// Question-flood detection: if the model keeps asking questions instead of answering, stop.
+	if trimmed != "" {
+		if strings.HasSuffix(trimmed, "?") {
+			f.consecutiveQs++
+		} else {
+			f.consecutiveQs = 0
+		}
+		if f.consecutiveQs >= 3 {
+			f.ended = true
+			return ""
+		}
+	}
+
+	// Similarity-based repetition: detect when recent lines share long common substrings.
+	if trimmed != "" && len(trimmed) > 20 {
+		f.recentLines = append(f.recentLines, trimmed)
+		if len(f.recentLines) > 10 {
+			f.recentLines = f.recentLines[len(f.recentLines)-10:]
+		}
+		if f.hasSimilarRepetition(trimmed) {
+			f.ended = true
+			return ""
+		}
+	}
+
 	// Clean out any embedded special tokens or stats
 	result := cleaned
 	for _, tok := range specialTokens {
@@ -120,7 +149,53 @@ func (f *StreamFilter) Filter(text string) string {
 		}
 	}
 
+	f.totalEmitted += len(result)
 	return result
+}
+
+// hasSimilarRepetition checks if the current line is very similar to multiple recent lines,
+// indicating the model is rehashing the same idea with minor rewording.
+func (f *StreamFilter) hasSimilarRepetition(current string) bool {
+	if len(f.recentLines) < 4 {
+		return false
+	}
+	// Count how many recent lines share a long common substring with the current line.
+	similarCount := 0
+	currentLower := strings.ToLower(current)
+	for i := 0; i < len(f.recentLines)-1; i++ {
+		pastLower := strings.ToLower(f.recentLines[i])
+		if longestCommonSubstringLen(currentLower, pastLower) >= 30 {
+			similarCount++
+		}
+	}
+	return similarCount >= 3
+}
+
+// longestCommonSubstringLen returns the length of the longest common substring between a and b.
+// Uses a sliding window approach bounded to avoid excessive computation.
+func longestCommonSubstringLen(a, b string) int {
+	if len(a) > 200 {
+		a = a[:200]
+	}
+	if len(b) > 200 {
+		b = b[:200]
+	}
+	best := 0
+	for i := 0; i < len(a); i++ {
+		for j := 0; j < len(b); j++ {
+			k := 0
+			for i+k < len(a) && j+k < len(b) && a[i+k] == b[j+k] {
+				k++
+			}
+			if k > best {
+				best = k
+				if best >= 30 {
+					return best // Early exit, threshold met
+				}
+			}
+		}
+	}
+	return best
 }
 
 func (f *StreamFilter) isHeaderNoise(trimmed string) bool {
