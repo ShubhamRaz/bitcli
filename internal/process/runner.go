@@ -32,6 +32,12 @@ func NewRunner() *Runner {
 
 // RunStream starts a process and streams stdout and stderr as text events.
 func (r *Runner) RunStream(ctx context.Context, dir, name string, args ...string) (<-chan Event, <-chan error) {
+	return r.RunStreamWithStdin(ctx, dir, nil, name, args...)
+}
+
+// RunStreamWithStdin starts a process, optionally writes stdinData to its stdin (then closes it),
+// and streams stdout and stderr as text events.
+func (r *Runner) RunStreamWithStdin(ctx context.Context, dir string, stdinData []byte, name string, args ...string) (<-chan Event, <-chan error) {
 	events := make(chan Event, 32)
 	errs := make(chan error, 1)
 
@@ -43,7 +49,11 @@ func (r *Runner) RunStream(ctx context.Context, dir, name string, args ...string
 		if dir != "" {
 			cmd.Dir = dir
 		}
-		cmd.Stdin = bytes.NewReader(nil)
+		if len(stdinData) > 0 {
+			cmd.Stdin = bytes.NewReader(stdinData)
+		} else {
+			cmd.Stdin = bytes.NewReader(nil)
+		}
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
 			errs <- err

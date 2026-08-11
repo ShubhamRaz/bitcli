@@ -69,6 +69,14 @@ func (f *StreamFilter) Filter(text string) string {
 	cleaned := strings.ReplaceAll(text, "\r\n", "\n")
 	trimmed := strings.TrimSpace(cleaned)
 
+	// Strip the interactive prompt ("> ") that llama-cli outputs in conversation mode
+	if strings.HasPrefix(trimmed, "> ") {
+		trimmed = strings.TrimSpace(trimmed[2:])
+		if trimmed == "" {
+			return ""
+		}
+	}
+
 	// Check if this line is header/banner/prompt-echo noise
 	if !f.started {
 		if f.isHeaderNoise(trimmed) {
@@ -220,6 +228,7 @@ func (f *StreamFilter) isHeaderNoise(trimmed string) bool {
 		"ftype:",
 		"modalities :",
 		"modalities:",
+		"using custom system prompt",
 		"available commands:",
 		"/exit",
 		"/regen",

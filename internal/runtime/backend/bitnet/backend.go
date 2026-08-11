@@ -172,16 +172,19 @@ func (b *Backend) Version(ctx context.Context) (string, error) {
 func (b *Backend) runInference(ctx context.Context, cmd Command) (<-chan backend.TokenEvent, <-chan error) {
 	events := make(chan backend.TokenEvent, 32)
 	errs := make(chan error, 1)
-	procEvents, procErrs := b.runner.RunStream(ctx, cmd.Dir, cmd.Name, cmd.Args...)
-	
-	prompt := ""
+	procEvents, procErrs := b.runner.RunStreamWithStdin(ctx, cmd.Dir, cmd.Stdin, cmd.Name, cmd.Args...)
+
+	// Build filter prompt from both system prompt (-sys) and user message (-p) for echo detection
+	filterPrompt := ""
 	for i := 0; i < len(cmd.Args)-1; i++ {
+		if cmd.Args[i] == "-sys" {
+			filterPrompt += cmd.Args[i+1] + "\n"
+		}
 		if cmd.Args[i] == "-p" {
-			prompt = cmd.Args[i+1]
-			break
+			filterPrompt += cmd.Args[i+1] + "\n"
 		}
 	}
-	filter := NewStreamFilter(prompt)
+	filter := NewStreamFilter(filterPrompt)
 
 	go func() {
 		defer close(events)

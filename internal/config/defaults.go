@@ -20,7 +20,7 @@ func DefaultConfig() Config {
 			Threads:       0,
 			GPULayers:     0,
 			ContextLength: 4096,
-			MaxTokens:     256,
+			MaxTokens:     128,
 			Device:        "cpu",
 		},
 		Backend: BackendConfig{

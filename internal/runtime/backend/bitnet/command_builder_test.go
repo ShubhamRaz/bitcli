@@ -11,7 +11,7 @@ import (
 	"github.com/bitcli/bitcli/internal/runtime/backend"
 )
 
-func TestGenerateCommandDirectLlamaCLI(t *testing.T) {
+func TestGenerateCommandConversationMode(t *testing.T) {
 	cfg := config.DefaultConfig()
 	paths := config.Paths{BackendDir: filepath.Join("tmp", "backends")}
 	builder := NewBuilder(cfg, paths)
@@ -26,30 +26,50 @@ func TestGenerateCommandDirectLlamaCLI(t *testing.T) {
 			TopP:          0.9,
 			GPULayers:     99,
 		},
-	}, true)
+	}, false)
 
 	if !strings.Contains(cmd.Name, "llama-cli") {
 		t.Fatalf("expected command name to contain llama-cli, got %s", cmd.Name)
 	}
-	// Verify flags
 	argsStr := strings.Join(cmd.Args, " ")
-	if !strings.Contains(argsStr, "-m") || !strings.Contains(argsStr, "-p hello") {
-		t.Fatalf("expected model and prompt in args, got %s", argsStr)
-	}
-	if !strings.Contains(argsStr, "-ngl 99") {
-		t.Fatalf("expected -ngl 99 in args, got %s", argsStr)
-	}
+
+	// Must use -cnv and -st for conversation mode
 	if !strings.Contains(argsStr, "-cnv") {
 		t.Fatalf("expected -cnv in args, got %s", argsStr)
 	}
 	if !strings.Contains(argsStr, "-st") {
 		t.Fatalf("expected -st in args, got %s", argsStr)
 	}
+
+	// -sys should be the system prompt
+	var sysArg string
+	for i, arg := range cmd.Args {
+		if arg == "-sys" && i+1 < len(cmd.Args) {
+			sysArg = cmd.Args[i+1]
+			break
+		}
+	}
+	if !strings.Contains(sysArg, "helpful assistant") {
+		t.Fatalf("expected system prompt in -sys, got %q", sysArg)
+	}
+
+	// -p should be the user message
+	var pArg string
+	for i, arg := range cmd.Args {
+		if arg == "-p" && i+1 < len(cmd.Args) {
+			pArg = cmd.Args[i+1]
+			break
+		}
+	}
+	if pArg != "hello" {
+		t.Fatalf("expected user message 'hello' in -p, got %q", pArg)
+	}
+
+	if !strings.Contains(argsStr, "-ngl 99") {
+		t.Fatalf("expected -ngl 99 in args, got %s", argsStr)
+	}
 	if !strings.Contains(argsStr, "--repeat-penalty") {
 		t.Fatalf("expected --repeat-penalty in args, got %s", argsStr)
-	}
-	if !strings.Contains(argsStr, "--no-display-prompt") {
-		t.Fatalf("expected --no-display-prompt in args, got %s", argsStr)
 	}
 }
 
@@ -125,27 +145,69 @@ func TestGenerateCommandMinP(t *testing.T) {
 	}
 }
 
-func TestGenerateCommandSystemPromptInjected(t *testing.T) {
+func TestGenerateCommandSysAndPromptSeparation(t *testing.T) {
 	cfg := config.DefaultConfig()
 	paths := config.Paths{BackendDir: filepath.Join("tmp", "backends")}
 	builder := NewBuilder(cfg, paths)
 	m := model.Model{Path: filepath.Join("models", "ggml-model-i2_s.gguf")}
 	cmd := builder.GenerateCommand(m, backend.GenerateRequest{
-		Prompt: "Hello",
+		Prompt: "What is the capital of France?",
 	}, false)
 
-	// Find the -p argument
-	var prompt string
+	// -sys should be the system prompt
+	var sysArg string
 	for i, arg := range cmd.Args {
-		if arg == "-p" && i+1 < len(cmd.Args) {
-			prompt = cmd.Args[i+1]
+		if arg == "-sys" && i+1 < len(cmd.Args) {
+			sysArg = cmd.Args[i+1]
 			break
 		}
 	}
-	if !strings.Contains(prompt, defaultSystemPrompt) {
-		t.Fatalf("expected default system prompt in -p arg, got: %q", prompt)
+	if !strings.Contains(sysArg, "helpful assistant") {
+		t.Fatalf("-sys should contain system prompt, got %q", sysArg)
 	}
-	if !strings.Contains(prompt, "Hello") {
-		t.Fatalf("expected user prompt in -p arg, got: %q", prompt)
+
+	// -p should be the user message, NOT the system prompt
+	var pArg string
+	for i, arg := range cmd.Args {
+		if arg == "-p" && i+1 < len(cmd.Args) {
+			pArg = cmd.Args[i+1]
+			break
+		}
+	}
+	if pArg != "What is the capital of France?" {
+		t.Fatalf("-p should contain user message, got %q", pArg)
+	}
+
+	// No Stdin needed since we use -p for user message
+	if len(cmd.Stdin) != 0 {
+		t.Fatalf("expected no Stdin data, got %q", string(cmd.Stdin))
+	}
+}
+
+func TestExtractFromChatTemplate(t *testing.T) {
+	template := "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nBe brief.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nHello there<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+	sys, user := extractFromChatTemplate(template)
+	if sys != "Be brief." {
+		t.Fatalf("expected system 'Be brief.', got %q", sys)
+	}
+	if user != "Hello there" {
+		t.Fatalf("expected user 'Hello there', got %q", user)
+	}
+}
+
+func TestExtractFromChatTemplateMultiTurn(t *testing.T) {
+	prompt := PromptFromMessages([]backend.Message{
+		{Role: "system", Content: "Be helpful."},
+		{Role: "user", Content: "Hi"},
+		{Role: "assistant", Content: "Hello!"},
+		{Role: "user", Content: "Tell me about dogs"},
+	})
+	sys, user := extractFromChatTemplate(prompt)
+	if sys != "Be helpful." {
+		t.Fatalf("expected system 'Be helpful.', got %q", sys)
+	}
+	// Should get the LAST user message
+	if user != "Tell me about dogs" {
+		t.Fatalf("expected last user message 'Tell me about dogs', got %q", user)
 	}
 }

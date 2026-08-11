@@ -15,9 +15,10 @@ import (
 
 // Command describes an external process invocation without shell interpolation.
 type Command struct {
-	Dir  string
-	Name string
-	Args []string
+	Dir   string
+	Name  string
+	Args  []string
+	Stdin []byte // optional data to feed to the process stdin
 }
 
 // Builder creates official bitnet.cpp command invocations.
@@ -136,32 +137,41 @@ func (b Builder) CMakeBuildCommand() Command {
 
 // defaultSystemPrompt provides instruction grounding for small models that
 // otherwise produce free-form text completions instead of answering questions.
-const defaultSystemPrompt = "You are a helpful assistant. Provide clear, direct, and informative answers. Be concise and stay on topic. Do not ask unnecessary questions back to the user."
+const defaultSystemPrompt = "You are a helpful assistant."
 
-// GenerateCommand builds a direct llama-cli invocation for text generation.
-// This bypasses run_inference.py for full control over flags and GPU support.
+// GenerateCommand builds a llama-cli invocation using native conversation mode.
+// The BitNet llama-cli auto-enables -cnv when the model has a chat template.
+// In conversation mode:
+//   - "-sys" sets the system prompt (applied via the model's jinja chat template)
+//   - "-p" sets the user message (first conversational turn)
+//   - "-st" makes it single-turn (process one exchange and exit)
 func (b Builder) GenerateCommand(m model.Model, req backend.GenerateRequest, conversation bool) Command {
-	prompt := req.Prompt
-	// If not already formatted as a multi-turn chat template, wrap single prompt with system prompt.
-	if !conversation && !strings.Contains(prompt, "<|begin_of_text|>") && !strings.Contains(prompt, "<|start_header_id|>") && !strings.Contains(prompt, "<|im_start|>") {
-		prompt = fmt.Sprintf("<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n%s<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n%s<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n", defaultSystemPrompt, strings.TrimSpace(prompt))
+	userMessage := strings.TrimSpace(req.Prompt)
+	systemPrompt := defaultSystemPrompt
+
+	// If the prompt was pre-formatted with chat template tokens (from Chat flow),
+	// extract the components. Otherwise use the raw prompt as the user message.
+	if strings.Contains(req.Prompt, "<|begin_of_text|>") || strings.Contains(req.Prompt, "<|start_header_id|>") {
+		// Pre-formatted prompt from PromptFromMessages — extract system + user parts
+		sys, user := extractFromChatTemplate(req.Prompt)
+		if sys != "" {
+			systemPrompt = sys
+		}
+		if user != "" {
+			userMessage = user
+		}
 	}
 
 	args := []string{
 		"-m", m.Path,
-		"-p", prompt,
+		"-sys", systemPrompt,
+		"-p", userMessage,
+		"-cnv",
 		"-st",
 		"--no-warmup",
-		"--no-show-timings",
 		"--simple-io",
-		"--no-display-prompt",
-		"--repeat-penalty", "1.25",
+		"--repeat-penalty", "1.2",
 		"--repeat-last-n", "64",
-		"-r", "<|eot_id|>",
-		"-r", "<|end_of_text|>",
-		"-r", "<|start_header_id|>",
-		"-r", "User:",
-		"-r", "Human:",
 	}
 	if req.Options.MaxTokens > 0 {
 		args = append(args, "-n", fmt.Sprintf("%d", req.Options.MaxTokens))
@@ -190,10 +200,31 @@ func (b Builder) GenerateCommand(m model.Model, req backend.GenerateRequest, con
 		ngl = req.Options.GPULayers
 	}
 	args = append(args, "-ngl", fmt.Sprintf("%d", ngl))
-	if conversation {
-		args = append(args, "-cnv")
-	}
+
 	return Command{Dir: b.BackendDir(), Name: b.LlamaCLIPath(), Args: args}
+}
+
+// extractFromChatTemplate parses a pre-formatted LLaMA-3 chat template prompt
+// to extract the system prompt and the last user message.
+func extractFromChatTemplate(prompt string) (system, user string) {
+	// Extract system message
+	const sysHeader = "<|start_header_id|>system<|end_header_id|>\n\n"
+	if idx := strings.Index(prompt, sysHeader); idx >= 0 {
+		rest := prompt[idx+len(sysHeader):]
+		if eot := strings.Index(rest, "<|eot_id|>"); eot >= 0 {
+			system = strings.TrimSpace(rest[:eot])
+		}
+	}
+	// Extract last user message
+	const userHeader = "<|start_header_id|>user<|end_header_id|>\n\n"
+	lastUserIdx := strings.LastIndex(prompt, userHeader)
+	if lastUserIdx >= 0 {
+		rest := prompt[lastUserIdx+len(userHeader):]
+		if eot := strings.Index(rest, "<|eot_id|>"); eot >= 0 {
+			user = strings.TrimSpace(rest[:eot])
+		}
+	}
+	return
 }
 
 // PromptFromMessages converts a chat transcript into the standard LLaMA-3 instruction chat template:
