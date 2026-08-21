@@ -144,7 +144,12 @@ func (b *Backend) Generate(ctx context.Context, m model.Model, req backend.Gener
 // formatted with the model's trained chat template. Each call
 // re-sends the entire conversation in one-shot mode.
 func (b *Backend) Chat(ctx context.Context, m model.Model, req backend.ChatRequest) (<-chan backend.TokenEvent, <-chan error) {
-	prompt := PromptFromMessages(req.Messages)
+	var prompt string
+	if m.ChatMode == model.ChatModeJinja {
+		prompt = PromptFromMessagesJinja(req.Messages)
+	} else {
+		prompt = PromptFromMessages(req.Messages)
+	}
 	genReq := backend.GenerateRequest{
 		ModelID: req.ModelID,
 		Prompt:  prompt,
@@ -153,6 +158,7 @@ func (b *Backend) Chat(ctx context.Context, m model.Model, req backend.ChatReque
 	cmd := b.builder.GenerateCommand(m, genReq, false)
 	return b.runInference(ctx, cmd)
 }
+
 
 // Stop is reserved for long-lived backend sessions.
 func (b *Backend) Stop(ctx context.Context, sessionID string) error {

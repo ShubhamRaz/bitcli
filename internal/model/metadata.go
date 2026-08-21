@@ -13,6 +13,16 @@ const (
 	StateFailed         State = "failed"
 )
 
+// ChatMode controls how the backend formats conversation turns.
+// "" or "plain" = hand-rolled "User:/Assistant:" format (base models).
+// "jinja"       = delegate to llama-cli --jinja (instruct/chat GGUFs).
+type ChatMode = string
+
+const (
+	ChatModePlain ChatMode = "plain"
+	ChatModeJinja ChatMode = "jinja"
+)
+
 // Artifact points at the concrete Hugging Face file used by a backend.
 type Artifact struct {
 	UserID        string
@@ -27,6 +37,7 @@ type Artifact struct {
 	ContextLength int
 	SHA256        string
 	SizeBytes     int64
+	ChatMode      ChatMode
 }
 
 // Model is the local metadata record for an installed model.
@@ -43,6 +54,7 @@ type Model struct {
 	ContextLength int
 	Path          string
 	State         State
+	ChatMode      ChatMode
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 }

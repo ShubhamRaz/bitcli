@@ -209,11 +209,13 @@ func (s *Service) register(ctx context.Context, artifact model.Artifact, path, s
 		Family:        artifact.Family,
 		Parameters:    artifact.Parameters,
 		ContextLength: artifact.ContextLength,
+		ChatMode:      artifact.ChatMode,
 		Path:          path,
 		State:         model.StateReady,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
+
 	file := model.File{
 		ID:        utils.NewID("file"),
 		ModelID:   m.ID,

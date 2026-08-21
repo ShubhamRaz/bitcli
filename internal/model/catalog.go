@@ -10,7 +10,7 @@ type Catalog struct {
 
 // DefaultCatalog returns the initial BitNet-aware catalog.
 func DefaultCatalog() Catalog {
-	official := Artifact{
+	base := Artifact{
 		UserID:        "microsoft/BitNet-b1.58-2B-4T",
 		CanonicalID:   "microsoft/bitnet-b1.58-2B-4T-gguf",
 		Backend:       "bitnet",
@@ -22,22 +22,40 @@ func DefaultCatalog() Catalog {
 		Parameters:    "2.4B",
 		ContextLength: 4096,
 		SizeBytes:     1190000000,
+		ChatMode:      ChatModePlain,
 	}
 
-	keys := []string{
-		official.UserID,
-		strings.ToLower(official.UserID),
-		official.CanonicalID,
-		strings.ToLower(official.CanonicalID),
+	// chat is the same GGUF used with llama-cli's --jinja flag so the embedded
+	// chat template (Llama 3 instruct format) is applied automatically.
+	chat := base
+	chat.UserID = "microsoft/BitNet-b1.58-2B-4T-chat"
+	chat.CanonicalID = "microsoft/bitnet-b1.58-2B-4T-gguf-chat"
+	chat.ChatMode = ChatModeJinja
+
+	baseKeys := []string{
+		base.UserID,
+		strings.ToLower(base.UserID),
+		base.CanonicalID,
+		strings.ToLower(base.CanonicalID),
 		"microsoft/BitNet-b1.58-2B-4T-gguf",
 		"microsoft/bitnet-b1.58-2b-4t",
 	}
-	artifacts := make(map[string]Artifact, len(keys))
-	for _, key := range keys {
-		artifacts[key] = official
+	chatKeys := []string{
+		chat.UserID,
+		strings.ToLower(chat.UserID),
+		"microsoft/bitnet-b1.58-2b-4t-chat",
+	}
+
+	artifacts := make(map[string]Artifact, len(baseKeys)+len(chatKeys))
+	for _, key := range baseKeys {
+		artifacts[key] = base
+	}
+	for _, key := range chatKeys {
+		artifacts[key] = chat
 	}
 	return Catalog{artifacts: artifacts}
 }
+
 
 // Resolve returns a concrete artifact for a user-supplied model ID.
 func (c Catalog) Resolve(id string) (Artifact, bool) {

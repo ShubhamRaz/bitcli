@@ -31,8 +31,8 @@ func (r *ModelRepository) Upsert(ctx context.Context, m model.Model, files []mod
 	return r.db.WithTx(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO models (
 			id, user_id, canonical_id, backend, repo_id, revision, quantization, family, parameters,
-			context_length, path, state, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			context_length, path, state, chat_mode, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(canonical_id) DO UPDATE SET
 			user_id=excluded.user_id,
 			backend=excluded.backend,
@@ -44,9 +44,10 @@ func (r *ModelRepository) Upsert(ctx context.Context, m model.Model, files []mod
 			context_length=excluded.context_length,
 			path=excluded.path,
 			state=excluded.state,
+			chat_mode=excluded.chat_mode,
 			updated_at=excluded.updated_at`,
 			m.ID, m.UserID, m.CanonicalID, m.Backend, m.RepoID, m.Revision, m.Quantization,
-			m.Family, m.Parameters, m.ContextLength, m.Path, string(m.State),
+			m.Family, m.Parameters, m.ContextLength, m.Path, string(m.State), m.ChatMode,
 			m.CreatedAt.Format(time.RFC3339Nano), m.UpdatedAt.Format(time.RFC3339Nano))
 		if err != nil {
 			return err
@@ -75,21 +76,21 @@ func (r *ModelRepository) Upsert(ctx context.Context, m model.Model, files []mod
 // GetByUserID loads a model by its friendly user-facing ID.
 func (r *ModelRepository) GetByUserID(ctx context.Context, userID string) (model.Model, error) {
 	return r.get(ctx, `SELECT id, user_id, canonical_id, backend, repo_id, revision, quantization, family,
-		parameters, context_length, path, state, created_at, updated_at FROM models
+		parameters, context_length, path, state, chat_mode, created_at, updated_at FROM models
 		WHERE user_id = ? AND state != ? LIMIT 1`, userID, string(model.StatePendingDelete))
 }
 
 // GetByCanonicalID loads a model by its concrete canonical artifact ID.
 func (r *ModelRepository) GetByCanonicalID(ctx context.Context, canonicalID string) (model.Model, error) {
 	return r.get(ctx, `SELECT id, user_id, canonical_id, backend, repo_id, revision, quantization, family,
-		parameters, context_length, path, state, created_at, updated_at FROM models
+		parameters, context_length, path, state, chat_mode, created_at, updated_at FROM models
 		WHERE canonical_id = ? AND state != ? LIMIT 1`, canonicalID, string(model.StatePendingDelete))
 }
 
 // List returns all non-deleted local models.
 func (r *ModelRepository) List(ctx context.Context) ([]model.Model, error) {
 	rows, err := r.db.SQL.QueryContext(ctx, `SELECT id, user_id, canonical_id, backend, repo_id, revision,
-		quantization, family, parameters, context_length, path, state, created_at, updated_at
+		quantization, family, parameters, context_length, path, state, chat_mode, created_at, updated_at
 		FROM models WHERE state != ? ORDER BY updated_at DESC`, string(model.StatePendingDelete))
 	if err != nil {
 		return nil, err
@@ -155,14 +156,15 @@ type modelScanner interface {
 
 func scanModel(scanner modelScanner) (model.Model, error) {
 	var m model.Model
-	var state, created, updated string
+	var state, chatMode, created, updated string
 	if err := scanner.Scan(
 		&m.ID, &m.UserID, &m.CanonicalID, &m.Backend, &m.RepoID, &m.Revision, &m.Quantization,
-		&m.Family, &m.Parameters, &m.ContextLength, &m.Path, &state, &created, &updated,
+		&m.Family, &m.Parameters, &m.ContextLength, &m.Path, &state, &chatMode, &created, &updated,
 	); err != nil {
 		return model.Model{}, err
 	}
 	m.State = model.State(state)
+	m.ChatMode = chatMode
 	m.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
 	m.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
 	return m, nil

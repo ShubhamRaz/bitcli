@@ -1,7 +1,10 @@
 // Package database owns SQLite connection setup, migrations, and concrete repositories.
 package database
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 // Migrate creates or upgrades BitCLI's local SQLite schema.
 func (db *DB) Migrate(ctx context.Context) error {
@@ -23,6 +26,7 @@ func (db *DB) Migrate(ctx context.Context) error {
 			context_length INTEGER NOT NULL,
 			path TEXT NOT NULL,
 			state TEXT NOT NULL,
+			chat_mode TEXT NOT NULL DEFAULT '',
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		);`,
@@ -93,9 +97,16 @@ func (db *DB) Migrate(ctx context.Context) error {
 			updated_at TEXT NOT NULL
 		);`,
 		`INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (1, datetime('now'));`,
+		// Migration: add chat_mode column to models for existing databases (idempotent via IF NOT EXISTS alternative: ignore error).
+		`ALTER TABLE models ADD COLUMN chat_mode TEXT NOT NULL DEFAULT '';`,
 	}
 	for _, stmt := range statements {
 		if _, err := db.SQL.ExecContext(ctx, stmt); err != nil {
+			// ALTER TABLE … ADD COLUMN fails with "duplicate column name" when the
+			// column already exists (fresh install). Treat that as a no-op.
+			if strings.Contains(err.Error(), "duplicate column name") {
+				continue
+			}
 			return err
 		}
 	}
