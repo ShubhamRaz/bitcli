@@ -13,7 +13,15 @@ import (
 	"github.com/bitcli/bitcli/internal/runtime/backend"
 )
 
+const baseModelFewShotPrefix = `The following is a conversation between a User and a helpful, intelligent Assistant.
 
+User: What is the capital of France?
+Assistant: The capital of France is Paris.
+<|eot_id|>
+User: Who wrote Hamlet?
+Assistant: Hamlet was written by William Shakespeare.
+<|eot_id|>
+`
 
 // Command describes an external process invocation without shell interpolation.
 type Command struct {
@@ -138,22 +146,14 @@ func (b Builder) CMakeBuildCommand() Command {
 }
 
 // GenerateCommand builds a llama-cli invocation.
-// For base models (ChatMode plain) the prompt is wrapped in a one-shot User:/Assistant: format.
-// For instruct/chat models (ChatMode jinja) --jinja is passed so llama-cli applies the
-// Jinja chat template embedded in the GGUF file.
+// The prompt is prepended with a few-shot prefix so the base model learns
+// conversational behavior through in-context examples.
 func (b Builder) GenerateCommand(m model.Model, req backend.GenerateRequest, conversation bool) Command {
 	prompt := req.Prompt
 
-	isJinja := m.ChatMode == model.ChatModeJinja
-
-	if isJinja {
-		// Prompt is already Llama 3 instruct-formatted by PromptFromMessagesJinja;
-		// leave it as-is and let llama-cli + --jinja handle it.
-	} else {
-		// Plain base-model path: wrap if not already formatted.
-		if !strings.Contains(prompt, "<|eot_id|>") {
-			prompt = fmt.Sprintf("User: %s<|eot_id|>Assistant: ", strings.TrimSpace(prompt))
-		}
+	// If prompt is not already formatted with BitNet's chat template, wrap it for one-shot.
+	if !strings.Contains(prompt, "<|eot_id|>") {
+		prompt = fmt.Sprintf("%sUser: %s<|eot_id|>Assistant: ", baseModelFewShotPrefix, strings.TrimSpace(prompt))
 	}
 
 	args := []string{
@@ -163,9 +163,6 @@ func (b Builder) GenerateCommand(m model.Model, req backend.GenerateRequest, con
 		"--simple-io",
 		"--repeat-penalty", "1.2",
 		"--repeat-last-n", "64",
-	}
-	if isJinja {
-		args = append(args, "--jinja")
 	}
 	if req.Options.MaxTokens > 0 {
 		args = append(args, "-n", fmt.Sprintf("%d", req.Options.MaxTokens))
@@ -198,13 +195,15 @@ func (b Builder) GenerateCommand(m model.Model, req backend.GenerateRequest, con
 	return Command{Dir: b.BackendDir(), Name: b.LlamaCLIPath(), Args: args}
 }
 
-// PromptFromMessages converts a chat transcript into the plain BitNet chat format:
+// PromptFromMessages converts a chat transcript into the plain BitNet chat format
+// with a few-shot prefix for in-context learning:
 //
-//	User: {msg}<|eot_id|>Assistant: {reply}<|eot_id|>...
-//
-// Use this for base models (ChatMode == plain).
+//	{few-shot prefix}User: {msg}<|eot_id|>Assistant: {reply}<|eot_id|>...
 func PromptFromMessages(messages []backend.Message) string {
 	var sb strings.Builder
+
+	// Prepend the few-shot context so base models behave as assistants
+	sb.WriteString(baseModelFewShotPrefix)
 
 	for _, msg := range messages {
 		role := strings.ToLower(strings.TrimSpace(msg.Role))

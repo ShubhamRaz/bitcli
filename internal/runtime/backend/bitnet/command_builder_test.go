@@ -49,7 +49,7 @@ func TestGenerateCommandFormatting(t *testing.T) {
 			break
 		}
 	}
-	expectedPrompt := "User: hello<|eot_id|>Assistant: "
+	expectedPrompt := baseModelFewShotPrefix + "User: hello<|eot_id|>Assistant: "
 	if pArg != expectedPrompt {
 		t.Fatalf("expected user message %q in -p, got %q", expectedPrompt, pArg)
 	}
@@ -85,7 +85,7 @@ func TestBuildCommands(t *testing.T) {
 
 func TestPromptFromMessages(t *testing.T) {
 	prompt := PromptFromMessages([]backend.Message{{Role: "user", Content: "Hello"}})
-	expected := "User: Hello<|eot_id|>Assistant: "
+	expected := baseModelFewShotPrefix + "User: Hello<|eot_id|>Assistant: "
 	if prompt != expected {
 		t.Fatalf("expected prompt:\n got: %q\nwant: %q", prompt, expected)
 	}
@@ -96,7 +96,7 @@ func TestPromptFromMessagesWithSystemMessage(t *testing.T) {
 		{Role: "system", Content: "Be brief."},
 		{Role: "user", Content: "Hello"},
 	})
-	expected := "System: Be brief.<|eot_id|>User: Hello<|eot_id|>Assistant: "
+	expected := baseModelFewShotPrefix + "System: Be brief.<|eot_id|>User: Hello<|eot_id|>Assistant: "
 	if prompt != expected {
 		t.Fatalf("unexpected prompt:\n got: %q\nwant: %q", prompt, expected)
 	}
@@ -166,21 +166,6 @@ func TestPromptFromMessagesJinjaWithSystem(t *testing.T) {
 	}
 }
 
-func TestGenerateCommandJinjaFlag(t *testing.T) {
-	cfg := config.DefaultConfig()
-	paths := config.Paths{BackendDir: filepath.Join("tmp", "backends")}
-	builder := NewBuilder(cfg, paths)
-	m := model.Model{
-		Path:     filepath.Join("models", "ggml-model-i2_s.gguf"),
-		ChatMode: model.ChatModeJinja,
-	}
-	cmd := builder.GenerateCommand(m, backend.GenerateRequest{Prompt: "hello"}, false)
-	argsStr := strings.Join(cmd.Args, " ")
-	if !strings.Contains(argsStr, "--jinja") {
-		t.Fatalf("expected --jinja in args for chat model, got: %s", argsStr)
-	}
-}
-
 func TestGenerateCommandNoJinjaForBaseModel(t *testing.T) {
 	cfg := config.DefaultConfig()
 	paths := config.Paths{BackendDir: filepath.Join("tmp", "backends")}
@@ -193,5 +178,16 @@ func TestGenerateCommandNoJinjaForBaseModel(t *testing.T) {
 	argsStr := strings.Join(cmd.Args, " ")
 	if strings.Contains(argsStr, "--jinja") {
 		t.Fatalf("expected no --jinja in args for base model, got: %s", argsStr)
+	}
+	// Should contain the few-shot prefix
+	var pArg string
+	for i, arg := range cmd.Args {
+		if arg == "-p" && i+1 < len(cmd.Args) {
+			pArg = cmd.Args[i+1]
+			break
+		}
+	}
+	if !strings.Contains(pArg, baseModelFewShotPrefix) {
+		t.Fatalf("expected few-shot prefix in prompt for base model, got: %q", pArg)
 	}
 }
